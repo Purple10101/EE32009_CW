@@ -1,0 +1,4 @@
+1. we gotta inject some noise into that ho!!!
+2. remember your task is to provide fully classified datasets.
+   you also need to determine the start of peaks!
+3. Sounds like this is two NNs one for classifcation and one for peak detection to me!
