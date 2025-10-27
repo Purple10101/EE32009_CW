@@ -39,9 +39,9 @@ import torch.nn.functional as F
 from torch.utils.data import TensorDataset, DataLoader
 
 from src.ext.data_loader_cls import Recording, plot_sample
-from src.nn.n_cls import NeuronCNN
+from src.nn.cnn_cls.n_cls import NeuronCNN
 
-os.chdir(os.path.dirname(os.path.dirname(os.getcwd())))
+os.chdir(os.path.dirname(os.path.dirname(os.path.dirname(os.getcwd()))))
 print(os.getcwd())
 
 def noise_plt_example(rec, snr_out):
