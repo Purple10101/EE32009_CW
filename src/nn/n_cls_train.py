@@ -41,7 +41,8 @@ from torch.utils.data import TensorDataset, DataLoader
 from src.ext.data_loader_cls import Recording, plot_sample
 from src.nn.n_cls import NeuronCNN
 
-#os.chdir(os.path.dirname(os.path.dirname(os.getcwd())))
+os.chdir(os.path.dirname(os.path.dirname(os.getcwd())))
+print(os.getcwd())
 
 def noise_plt_example(rec, snr_out):
     # plot the 0th capture with noise injection
@@ -57,8 +58,8 @@ def prep_training_set(rec, snr_out=80):
         # for example plot some normed time series
         for i in range(30):
             capture = rec.captures_training_norm[i]
-            if capture["Classification"] == 1:
-                plot_sample(capture)
+            #if capture["Classification"] == 1:
+                #plot_sample(capture)
     else:
         noisy_un_norm = rec.noise_injection(rec.captures_training, snr)
         noisy_norm = rec.norm_data(noisy_un_norm)
@@ -81,10 +82,10 @@ data_inf = loadmat('data\D2.mat')
 
 rec = Recording(data['d'], data['Index'], data['Class'])
 
-snr_lst = [80, 60, 20] # add back 0 and -10
+snr_lst = [80] # add back 0 and -10
 
 # show example of manual degradation
-noise_plt_example(rec, snr_lst)
+#noise_plt_example(rec, snr_lst)
 # now create test sets for each SNR
 training_sets = []
 for snr in snr_lst:
@@ -93,9 +94,9 @@ for snr in snr_lst:
 
 
 # model and training
-model = NeuronCNN(6)
+model = NeuronCNN(5)
 criterion = nn.CrossEntropyLoss()
-optimizer = torch.optim.AdamW(model.parameters(), lr=10e-4, weight_decay=1e-4)
+optimizer = torch.optim.AdamW(model.parameters(), lr=10e-4)
 
 num_epochs = 500
 
@@ -106,6 +107,7 @@ for epoch in range(num_epochs):
 
     for dataloader in training_sets:
         for X_batch, y_batch in dataloader:
+            y_batch -= 1
             optimizer.zero_grad()
             preds = model(X_batch)
             loss = criterion(preds, y_batch)
@@ -124,7 +126,7 @@ torch.save(model.state_dict(), "src/nn/models/20251025_neuron_noise_inj_cls.pt")
 # separate training and inference, make n_cls_inf.py
 
 # load model and evaluate performance
-model = NeuronCNN(6)
+model = NeuronCNN(5)
 model.load_state_dict(torch.load("src/nn/models/20251025_neuron_noise_inj_cls.pt"))
 model.eval()
 
@@ -139,13 +141,13 @@ with torch.no_grad():
         X = np.expand_dims(X, axis=1)
         X_tensor = torch.tensor(X).T.unsqueeze(0)
         outputs = model(X_tensor)
-        predicted = torch.argmax(outputs)
+        predicted = torch.argmax(outputs) + 1 # classes 1-5 not 0-4
         real_lb = test_capture["Classification"]
         if predicted == real_lb:
             scorecard.append(1)
         else:
             scorecard.append(0)
-            plot_sample(test_capture)
+            #plot_sample(test_capture)
 scorecard_array = np.array(scorecard)
 print(f"performance = {scorecard_array.mean()*100}%")
 

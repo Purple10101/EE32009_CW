@@ -32,11 +32,11 @@ import random
 
 class Recording:
 
-    def __init__(self, raw_data, idx_lst, cls_lst):
+    def __init__(self, raw_data, idx_lst=None, cls_lst=None):
         # raw variables
         self.raw_data = raw_data[0]
-        self.idx_lst = idx_lst[0]
-        self.cls_lst = cls_lst[0]
+        self.idx_lst = idx_lst[0] if idx_lst is not None else None
+        self.cls_lst = cls_lst[0] if cls_lst is not None else None
 
         # Noise gets added to the un-normalized time series
         # and then gets normalized
