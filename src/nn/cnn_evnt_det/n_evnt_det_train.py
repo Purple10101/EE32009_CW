@@ -32,7 +32,7 @@ import torch.optim as optim
 import torch.nn.functional as F
 from torch.utils.data import TensorDataset, DataLoader
 
-from src.nn.rnn_evnt_det.n_evnt_det import SpikeNet
+from src.nn.cnn_evnt_det.n_evnt_det import SpikeNet
 
 os.chdir(os.path.dirname(os.path.dirname(os.path.dirname(os.getcwd()))))
 print(os.getcwd())
@@ -75,7 +75,7 @@ def plot_sample_with_binary(sample, binary_signal):
     ax2.legend()
 
     plt.tight_layout()
-    plt.show()
+    plt.show(block=False)
 
 def prep_set(data, labels, window_size=200, stride=100):
     X, y = [], []
@@ -109,7 +109,7 @@ idx_bin_test = labels_bin[split_index_raw:]
 
 #
 sample_dataset_raw_data = raw_data_train[-700: -500]
-sample_dataset_idx_bin = labels_bin[-700: -500]
+sample_dataset_idx_bin = idx_bin_train[-700: -500]
 
 # training data
 X_tensor, y_tensor = prep_set(raw_data_train, idx_bin_train)
@@ -185,6 +185,6 @@ with torch.no_grad():
     outputs = model(X_sample)
     preds = (outputs > 0.5).float()
 
-plot_sample(sample_dataset_raw_data,)
+plot_sample_with_binary(sample_dataset_raw_data, preds.squeeze().tolist())
 
 print()
