@@ -135,9 +135,6 @@ scorecard = []
 with torch.no_grad():
     for test_capture in rec.captures_test_norm:
         X = np.array(test_capture["Capture"], dtype=np.float32)
-        X_min = X.min(axis=0)
-        X_max = X.max(axis=0)
-        X_norm = (X - X_min) / (X_max - X_min)
         X = np.expand_dims(X, axis=1)
         X_tensor = torch.tensor(X).T.unsqueeze(0)
         outputs = model(X_tensor)
@@ -158,9 +155,6 @@ with torch.no_grad():
     noisy_norm = rec.norm_data(noisy_un_norm)
     for test_capture in noisy_norm:
         X = np.array(test_capture["Capture"], dtype=np.float32)
-        X_min = X.min(axis=0)
-        X_max = X.max(axis=0)
-        X_norm = (X - X_min) / (X_max - X_min)
         X = np.expand_dims(X, axis=1)
         X_tensor = torch.tensor(X).T.unsqueeze(0)
         outputs = model(X_tensor)

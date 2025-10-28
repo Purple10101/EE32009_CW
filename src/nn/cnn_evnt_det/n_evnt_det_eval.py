@@ -59,8 +59,8 @@ idx_bin_test = labels_bin[split_index_raw:]
 print(len(idx_bin_test))
 
 #
-sample_dataset_raw_data = raw_data_test[-10000: -500]
-sample_dataset_idx_bin = idx_bin_test[-10000: -500]
+sample_dataset_raw_data = raw_data_test[-20000: -500]
+sample_dataset_idx_bin = idx_bin_test[-20000: -500]
 
 # validation data
 X_tensor_val, y_tensor_val = prep_set_inf(raw_data_test, idx_bin_test)
@@ -104,19 +104,11 @@ y_pred = np.array(known_events)
 num_wrong = sum(int(a) ^ int(b) for a, b in zip(y_true, y_pred))
 print(100*(1-(num_wrong/len(y_true))))
 
-
-
 # create the list of spike idx
 output_indexes = []
 for idx, val in enumerate(infered_events):
     if val == 1:
         output_indexes.append(idx)
-
-print(incorrect_count/len(loader_val))
-
-
-y_true_list = []
-y_pred_list = []
 
 with torch.no_grad():
     X_sample = X_sample.unsqueeze(0)
