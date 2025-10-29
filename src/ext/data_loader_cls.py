@@ -158,4 +158,4 @@ def plot_sample(sample):
              verticalalignment='top')
     plt.grid(True, linestyle='--', alpha=0.6)
     plt.tight_layout()
-    plt.show()
+    plt.show(block=False)
