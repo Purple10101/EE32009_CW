@@ -5,7 +5,7 @@
  Description:
  Author:       Joshua Poole
  Created on:   20251029
- Version:      1.0
+ Version:      1.1
 ===========================================================
 
  Notes:
@@ -22,45 +22,89 @@
 """
 
 import plotly.graph_objects as go
+from plotly.subplots import make_subplots
 import numpy as np
 from scipy.io import loadmat
 import os
 
+# remove this dir stuff
 os.chdir(os.path.dirname(os.path.dirname(os.getcwd())))
 print(os.getcwd())
 
-def plot_dataset(data_ts, data_spk=None, data_cls=None):
-    fig = go.Figure()
-    x = np.linspace(0, len(data_ts), num=len(data_ts))
+def parse_n_dat(data_pk):
+    """
+    Takes data in the same format as the DX.mat files
+    That data is accessible the by the following:
+    data_pk['d'][0], data_pk['Index'][0], data_pk['Class'][0]
+    """
+    raw_dat, idx, cls = data_pk['d'][0], data_pk['Index'][0], data_pk['Class'][0]
 
-    fig.add_trace(go.Scattergl(
-        x=x,
-        y=data_ts,
-        mode='lines',
-        line=dict(width=1),
-        name='Signal'
-    ))
+    # parse the idx list into bin series
+    idx_bin = []
+    for i in range(len(raw_dat)):
+        if i in idx:
+            idx_bin.append(1)
+        else:
+            idx_bin.append(0)
 
-    fig.update_layout(
-        title='Interactive Time Series Explorer',
-        xaxis=dict(
-            title='Date',
-            rangeslider=dict(visible=True),
-            type='date'
+    return raw_dat.tolist(), idx_bin, cls.tolist()
+
+def plot_dataset(data_pk):
+
+
+    raw_dat, idx_bin, cls = parse_n_dat(data_pk)
+    x = np.arange(len(raw_dat))
+
+    # Create a figure with 2 rows, shared x-axis
+    fig = make_subplots(
+        rows=2, cols=1,
+        shared_xaxes=True,
+        vertical_spacing=0.05,
+        row_heights=[0.75, 0.25],
+        subplot_titles=("Time Series", "Binary Signal")
+    )
+
+    # raw data plot
+    fig.add_trace(
+        go.Scattergl(
+            x=x,
+            y=raw_dat,
+            mode='lines',
+            line=dict(width=1),
+            name='Signal'
         ),
-        yaxis=dict(title='Value'),
+        row=1, col=1
+    )
+
+    # idx bin plot
+    fig.add_trace(
+        go.Scattergl(
+            x=x,
+            y=idx_bin,
+            mode='lines',
+            line=dict(width=1, color='red'),
+            name='Binary'
+        ),
+        row=2, col=1
+    )
+    fig.update_layout(
+        title='Interactive Time Series + Binary Signal',
         hovermode='x unified',
         template='plotly_white',
-        height=700
+        height=800
     )
+    # to try and improve dynamic performance
+    fig.update_layout(hovermode=False)
+
+    fig.update_xaxes(title_text='Sample Index', row=2, col=1)
+    fig.update_yaxes(title_text='Value', row=1, col=1)
+    fig.update_yaxes(title_text='Binary', range=[-0.1, 1.1], row=2, col=1)
 
     fig.show()
 
 
 data = loadmat('data\D1.mat')
-raw_data = data['d'][0]
-raw_data = raw_data.tolist()
 
-plot_dataset(raw_data)
+plot_dataset(data)
 print()
 
