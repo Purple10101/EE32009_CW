@@ -54,8 +54,8 @@ for y in range(raw_data.shape[0]):
 
 split_index_raw = int(len(raw_data) * tr_to_tst_r)
 
-raw_data_train = raw_data[:split_index_raw]
-idx_bin_train = labels_bin[:split_index_raw]
+raw_data_train = raw_data
+idx_bin_train = labels_bin
 
 # training data
 X_tensor, y_tensor = prep_set_train(raw_data_train, idx_bin_train)
