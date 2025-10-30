@@ -2,10 +2,11 @@
 """
 ===========================================================
  Title:        nn_data_plot_app.py
- Description:
+ Description:  Takes a loaded .mat file and plots it.
+ Author:
  Author:       Joshua Poole
  Created on:   20251029
- Version:      1.1
+ Version:      1.2
 ===========================================================
 
  Notes:
@@ -27,9 +28,9 @@ import numpy as np
 from scipy.io import loadmat
 import os
 
-# remove this dir stuff
-os.chdir(os.path.dirname(os.path.dirname(os.getcwd())))
-print(os.getcwd())
+# remove this dir stuff, this is just for my dir
+"""os.chdir(os.path.dirname(os.path.dirname(os.getcwd())))
+print(os.getcwd())"""
 
 def parse_n_dat(data_pk):
     """
@@ -47,12 +48,11 @@ def parse_n_dat(data_pk):
         else:
             idx_bin.append(0)
 
-    return raw_dat.tolist(), idx_bin, cls.tolist()
+    return raw_dat.tolist(), idx_bin, cls.tolist(), idx
 
 def plot_dataset(data_pk):
 
-
-    raw_dat, idx_bin, cls = parse_n_dat(data_pk)
+    raw_dat, idx_bin, cls, idx = parse_n_dat(data_pk)
     x = np.arange(len(raw_dat))
 
     # Create a figure with 2 rows, shared x-axis
@@ -87,13 +87,30 @@ def plot_dataset(data_pk):
         ),
         row=2, col=1
     )
+
+    # cls labels
+    for i, label in enumerate(cls):
+        fig.add_trace(
+            go.Scattergl(
+                x=[idx[i]],
+                y=[raw_dat[idx[i]]],
+                mode='markers+text',
+                text=[str(label)],
+                textposition='top center',
+                marker=dict(size=8, symbol='circle', line=dict(width=1, color='black')),
+                name=f'Class {label}',
+                showlegend = False
+            ),
+            row=1, col=1
+        )
+
     fig.update_layout(
         title='Interactive Time Series + Binary Signal',
         hovermode='x unified',
         template='plotly_white',
         height=800
     )
-    # to try and improve dynamic performance
+    # to try and improve dynamic performance plzzzzz so slow
     fig.update_layout(hovermode=False)
 
     fig.update_xaxes(title_text='Sample Index', row=2, col=1)
@@ -103,8 +120,10 @@ def plot_dataset(data_pk):
     fig.show()
 
 
+"""
+# optional example plot
 data = loadmat('data\D1.mat')
 
 plot_dataset(data)
-print()
+print()"""
 
