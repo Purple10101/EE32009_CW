@@ -38,7 +38,7 @@ import numpy as np
 
 import torch
 
-from src.ext.data_loader_cls import Recording, plot_sample
+from src.ext.data_loader_cls import RecordingTrain, plot_sample
 from src.nn.cnn_cls.n_cls import NeuronCNN
 from src.nn.cnn_cls.n_cls_utils import noise_plt_example, prep_training_set
 
@@ -50,17 +50,17 @@ print(os.getcwd())
 data = loadmat('data\D1.mat')
 data_inf = loadmat('data\D2.mat')
 
-rec = Recording(data['d'], data['Index'], data['Class'])
+rec = RecordingTrain(data['d'], data['Index'], data['Class'])
 
 # load model and evaluate performance
 model = NeuronCNN(5)
-model.load_state_dict(torch.load("src/nn/models/20251025_neuron_noise_inj_cls.pt"))
+model.load_state_dict(torch.load("src/nn/models/20251030_neuron_total_norm.pt"))
 model.eval()
 
 scorecard = []
 
 with torch.no_grad():
-    for test_capture in rec.captures_test_norm:
+    for test_capture in rec.captures_val:
         X = np.array(test_capture["Capture"], dtype=np.float32)
         X = np.expand_dims(X, axis=1)
         X_tensor = torch.tensor(X).T.unsqueeze(0)
@@ -75,21 +75,3 @@ with torch.no_grad():
 scorecard_array = np.array(scorecard)
 print(f"performance = {scorecard_array.mean()*100}%")
 
-scorecard = []
-
-with torch.no_grad():
-    noisy_un_norm = rec.noise_injection(rec.captures_training, 0)
-    noisy_norm = rec.norm_data(noisy_un_norm)
-    for test_capture in noisy_norm:
-        X = np.array(test_capture["Capture"], dtype=np.float32)
-        X = np.expand_dims(X, axis=1)
-        X_tensor = torch.tensor(X).T.unsqueeze(0)
-        outputs = model(X_tensor)
-        predicted = torch.argmax(outputs)
-        real_lb = test_capture["Classification"]
-        if predicted == real_lb:
-            scorecard.append(1)
-        else:
-            scorecard.append(0)
-scorecard_array = np.array(scorecard)
-print(f"performance = {scorecard_array.mean()*100}%")

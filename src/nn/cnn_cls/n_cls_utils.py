@@ -38,21 +38,21 @@ def noise_plt_example(rec, snr_out):
 
 def prep_training_set(rec, snr_out=80):
     if snr_out == 80:
-        captures = [d["Capture"] for d in rec.captures_training_norm]
-        clss = [d["Classification"] for d in rec.captures_training_norm]
+        captures = [d["Capture"] for d in rec.captures_train]
+        cls = [d["Classification"] for d in rec.captures_train]
         # for example plot some normed time series
-        for i in range(30):
-            capture = rec.captures_training_norm[i]
-            if capture["Classification"] == 1:
+        for i in range(80):
+            capture = rec.captures_train[i]
+            if capture["Classification"] == 3:
                 plot_sample(capture)
     else:
-        noisy_un_norm = rec.noise_injection(rec.captures_training, snr_out)
+        noisy_un_norm = rec.noise_injection(rec.captures_train, snr_out)
         noisy_norm = rec.norm_data(noisy_un_norm)
         captures = [d["Capture"] for d in noisy_norm]
-        clss = [d["Classification"] for d in noisy_norm]
+        cls = [d["Classification"] for d in noisy_norm]
 
     X = np.array(captures, dtype=np.float32)
-    y = np.array(clss, dtype=np.int64)
+    y = np.array(cls, dtype=np.int64)
     X = np.expand_dims(X, axis=1)
     X_tensor = torch.tensor(X)
     y_tensor = torch.tensor(y)

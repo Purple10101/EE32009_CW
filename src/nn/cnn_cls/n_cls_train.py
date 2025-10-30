@@ -41,7 +41,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.utils.data import TensorDataset, DataLoader
 
-from src.ext.data_loader_cls import Recording, plot_sample
+from src.ext.data_loader_cls import RecordingTrain, plot_sample
 from src.nn.cnn_cls.n_cls import NeuronCNN
 from src.nn.cnn_cls.n_cls_utils import noise_plt_example, prep_training_set
 
@@ -54,12 +54,13 @@ print(os.getcwd())
 data = loadmat('data\D1.mat')
 data_inf = loadmat('data\D2.mat')
 
-rec = Recording(data['d'], data['Index'], data['Class'])
+rec = RecordingTrain(data['d'], data['Index'], data['Class'])
 
 snr_lst = [80] # add back 0 and -10
 
 # show example of manual degradation
 #noise_plt_example(rec, snr_lst)
+
 # now create test sets for each SNR
 training_sets = []
 for snr in snr_lst:
@@ -68,7 +69,7 @@ for snr in snr_lst:
 # model and training
 model = NeuronCNN(5)
 criterion = nn.CrossEntropyLoss()
-optimizer = torch.optim.AdamW(model.parameters(), lr=10e-4)
+optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
 
 num_epochs = 500
 
@@ -93,4 +94,4 @@ for epoch in range(num_epochs):
     avg_loss = epoch_loss / total_batches
     print(f"Epoch {epoch + 1}: avg_loss = {avg_loss:.4f}")
 
-torch.save(model.state_dict(), "src/nn/models/20251025_neuron_noise_inj_cls.pt")
+torch.save(model.state_dict(), "src/nn/models/20251030_neuron_total_norm.pt")
