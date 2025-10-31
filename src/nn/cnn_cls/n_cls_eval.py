@@ -58,6 +58,7 @@ model.load_state_dict(torch.load("src/nn/models/20251030_neuron_total_norm.pt"))
 model.eval()
 
 scorecard = []
+predictions_lst = []
 
 with torch.no_grad():
     for test_capture in rec.captures_val:
@@ -66,6 +67,7 @@ with torch.no_grad():
         X_tensor = torch.tensor(X).T.unsqueeze(0)
         outputs = model(X_tensor)
         predicted = torch.argmax(outputs) + 1 # classes 1-5 not 0-4
+        predictions_lst.append(predicted.item())
         real_lb = test_capture["Classification"]
         if predicted == real_lb:
             scorecard.append(1)

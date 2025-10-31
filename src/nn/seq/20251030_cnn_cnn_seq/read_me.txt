@@ -2,6 +2,7 @@ Note:
 	- No noise injection.
 	- Norm the whole thing (al 1.4m samples)
 		- This causes issues as the highest spikes are a result of compounded n activations.
+	- This model probably suck when SNR degrades!
 
 
 Spike Detection:

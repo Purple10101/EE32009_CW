@@ -91,7 +91,6 @@ with torch.no_grad():
     incorrect_count = 0
     for X_batch, y_batch in loader_val:
         outputs = model(X_batch)
-        threshold = 0.3
         preds = (outputs > 0.5).float()
         infered_events.extend(preds.flatten().tolist())
         known_events.extend(y_batch.flatten().tolist())

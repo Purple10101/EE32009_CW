@@ -185,21 +185,27 @@ class RecordingInf:
         :return:               A list of all captures in format {Capture=[], Classification=int}
         """
         captures_list = []
-        for classification_index, idx in enumerate(self.index_lst):
-            cap = []
-            for sample_idx in range(int(idx-(capture_width * (1 - capture_weight))),
-                                    int(idx+(capture_width * capture_weight))):
-                try:
-                    cap.append(self.data_norm[sample_idx])
-                except IndexError:
-                    # sometimes the inf decides there is a peak too late
-                    # and it falls of the end i think!
-                    print()
+        valid_indices = []
+
+        left_offset = int(capture_width * (1 - capture_weight))
+        right_offset = int(capture_width * capture_weight)
+
+        for idx in self.index_lst:
+            start = idx - left_offset
+            end = idx + right_offset
+
+            if start < 0 or end >= len(self.data_norm):
+                continue
+
+            cap = self.data_norm[start:end]
             captures_list.append({
                 "Capture": cap,
                 "Classification": None,
-                "PeakIdx": capture_width * (1 - capture_weight)
+                "PeakIdx": left_offset
             })
+            valid_indices.append(idx)
+
+        self.index_lst = valid_indices
         return captures_list
 
     def event_det_inf(self):
@@ -242,7 +248,12 @@ class RecordingInf:
             "Index": self.index_lst,
             "Class" : self.cls_lst
         }
-        savemat(f"src/nn/seq/20251030_cnn_cnn_seq/outputs/{self.dataset_id}.mat", export_data)
+        savemat(f"src/nn/seq/20251030_cnn_cnn_seq/outputs/vis/{self.dataset_id}_vis.mat", export_data)
+        export_data_sub = {
+            "Index": self.index_lst,
+            "Class" : self.cls_lst
+        }
+        savemat(f"src/nn/seq/20251030_cnn_cnn_seq/outputs/sub/{self.dataset_id}.mat", export_data_sub)
 
 
 def plot_sample_with_binary(sample, binary_signal):
@@ -289,5 +300,9 @@ dataset_0db = loadmat('data\D5.mat')
 dataset_sub0db = loadmat('data\D6.mat')
 
 recording_60db = RecordingInf(dataset_60db, "D2")
+recording_40db = RecordingInf(dataset_40db, "D3")
+recording_20db = RecordingInf(dataset_20db, "D4")
+recording_0db = RecordingInf(dataset_0db, "D5")
+recording_sub0db = RecordingInf(dataset_sub0db, "D6")
 print()
 
