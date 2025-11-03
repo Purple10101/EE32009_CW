@@ -23,21 +23,26 @@
 
 import torch
 import torch.nn as nn
+from torch.nn import functional as F
 
 
 class SpikeNet(nn.Module):
-    def __init__(self):
+    def __init__(self, input_channels=1):
         super().__init__()
         self.net = nn.Sequential(
-            nn.Conv1d(1, 16, 5, padding=2),
+            nn.Conv1d(input_channels, 32, kernel_size=7, padding=3, dilation=1),
+            nn.BatchNorm1d(32),
             nn.ReLU(),
-            nn.Conv1d(16, 32, 5, padding=2),
+            nn.Conv1d(32, 64, kernel_size=5, padding=4, dilation=2),
+            nn.BatchNorm1d(64),
             nn.ReLU(),
-            nn.Conv1d(32, 1, 5, padding=2),  # keep 1 output channel
-            nn.Sigmoid()                     # output probability per sample
+            nn.Conv1d(64, 128, kernel_size=3, padding=4, dilation=4),
+            nn.BatchNorm1d(128),
+            nn.ReLU(),
+            nn.Dropout(0.3),
+            nn.Conv1d(128, 1, kernel_size=1),
         )
 
     def forward(self, x):
-        # x: (batch, 1, window_size)
-        out = self.net(x)  # (batch, 1, window_size)
-        return out.squeeze(1)  # -> (batch, window_size)
+        x = torch.sigmoid(self.net(x))
+        return x.squeeze(1)

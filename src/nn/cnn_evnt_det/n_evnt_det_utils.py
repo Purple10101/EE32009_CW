@@ -70,7 +70,37 @@ def plot_sample_with_binary(sample, binary_signal):
     plt.tight_layout()
     plt.show(block=False)
 
-def prep_set_train(data, labels, window_size=200, stride=100):
+def prep_set_train(data, labels, window_size=80, stride=1, window_interleave=3):
+    """
+    Package the series and indexes into tensors with respect to the
+    required window size and stride length.
+
+    It has a sliding window (hence stride) that means the output
+    tensors will represent 2*input_size - window_size 1D datapoints
+    """
+    X, y = [], []
+    zero_count = 0
+    np_lables = np.array(labels)
+    noise_c = 0
+    for i in range(0, len(data) - window_size, stride):
+        # get windows with a 10 sample spike onset
+        # for each spike we want window_interleave windows of noise
+        window_split_idx = (window_size*0.8)
+        if np_lables[i+int(window_split_idx)] == 1:
+            X.append(data[i:i + window_size])
+            y.append(labels[i:i + window_size])
+            noise_c = 0
+        elif np_lables[i-window_size:i + window_size].mean() == 0 and noise_c < window_interleave:
+            X.append(data[i:i + window_size])
+            y.append(labels[i:i + window_size])
+            noise_c += 1
+
+    X = torch.tensor(X, dtype=torch.float32).unsqueeze(1)  # (N, 1, window_size)
+    y = torch.tensor(y, dtype=torch.float32)  # (N, window_size)
+    print(X.size(), y.size())
+    return X, y
+
+def prep_set_val(data, labels, window_size=80, stride=1):
     """
     Package the series and indexes into tensors with respect to the
     required window size and stride length.
