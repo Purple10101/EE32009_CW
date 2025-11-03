@@ -33,15 +33,25 @@ import torch.nn.functional as F
 from torch.utils.data import TensorDataset, DataLoader
 
 from src.nn.cnn_evnt_det.n_evnt_det import SpikeNet
-from src.nn.cnn_evnt_det.n_evnt_det_utils import plot_sample_with_binary, prep_set_inf
+from src.nn.cnn_evnt_det.n_evnt_det_utils import plot_sample_with_binary, prep_set_val, norm_data
 
 os.chdir(os.path.dirname(os.path.dirname(os.path.dirname(os.getcwd()))))
 print(os.getcwd())
 
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
 data = loadmat('data\D1.mat')
+data_d2 = loadmat('data\D2.mat')
+data_d3 = loadmat('data\D3.mat')
+data_d4 = loadmat('data\D4.mat')
+data_d5 = loadmat('data\D5.mat')
+data_d6 = loadmat('data\D6.mat')
+
+inf_datasets = [data_d2, data_d3, data_d4, data_d5, data_d6]
 
 
 raw_data = data['d'][0]
+raw_data = norm_data(raw_data)
 idx_lst = data['Index'][0]
 tr_to_tst_r=0.8
 
@@ -56,65 +66,48 @@ split_index_raw = int(len(raw_data) * tr_to_tst_r)
 
 raw_data_test = raw_data[split_index_raw:]
 idx_bin_test = labels_bin[split_index_raw:]
-print(len(idx_bin_test))
 
-#
-sample_dataset_raw_data = raw_data_test[-20000: -500]
-sample_dataset_idx_bin = idx_bin_test[-20000: -500]
+# val data
+raw_data_val = raw_data[split_index_raw:]
+idx_bin_val = labels_bin[split_index_raw:]
+X_v, y_v = prep_set_val(raw_data_val, idx_bin_val)
+dataset_v = TensorDataset(X_v, y_v)
+loader_v = DataLoader(dataset_v, batch_size=64, shuffle=True)
 
-# validation data
-X_tensor_val, y_tensor_val = prep_set_inf(raw_data_test, idx_bin_test)
-dataset_val = TensorDataset(X_tensor_val, y_tensor_val)
-loader_val = DataLoader(dataset_val, batch_size=32, shuffle=True)
-# sample data for visualisation
+# plotting sample data
+sample_dataset_raw_data = raw_data_val
+sample_dataset_idx_bin = idx_bin_val
 X_sample = torch.tensor(sample_dataset_raw_data, dtype=torch.float32).unsqueeze(1)
 y_sample = torch.tensor(sample_dataset_idx_bin, dtype=torch.float32)
 
-# plot sample data
-plot_sample_with_binary(sample_dataset_raw_data, sample_dataset_idx_bin)
-
-print(X_tensor_val.shape, y_tensor_val.shape)
-
 # load model and evaluate performance
-model = SpikeNet()
-model.load_state_dict(torch.load("src/nn/models/20251028_neuron_event_det_cnn.pt"))
+model = SpikeNet().to(device)
+model.load_state_dict(torch.load("src/nn/models/20251103_neuron_event_det_cnn_dilation.pt"))
 model.eval()
-
-scorecard = []
-infered_events = []
-known_events = []
-
-prediction_count = 0
-
-model.eval()
-with torch.no_grad():
-    incorrect_count = 0
-    for X_batch, y_batch in loader_val:
-        outputs = model(X_batch)
-        preds = (outputs > 0.5).float()
-        infered_events.extend(preds.flatten().tolist())
-        known_events.extend(y_batch.flatten().tolist())
-        prediction_count += preds.size(0)*preds.size(1)
-        print()
-
-# see how we did % wise, bear in mind we are currently at 80dB
-y_true = np.array(infered_events)
-y_pred = np.array(known_events)
-num_wrong = sum(int(a) ^ int(b) for a, b in zip(y_true, y_pred))
-print(100*(1-(num_wrong/len(y_true))))
-
-# create the list of spike idx
-output_indexes = []
-for idx, val in enumerate(infered_events):
-    if val == 1:
-        output_indexes.append(idx)
 
 with torch.no_grad():
     X_sample = X_sample.unsqueeze(0)
     X_sample = X_sample.permute(0, 2, 1)
-    outputs = model(X_sample)
-    preds = (outputs > 0.5).float()
+    outputs = model(X_sample.to(device))
+    preds = (outputs > 0.68).float()
+    print(len([x for x in preds.squeeze().tolist() if x != 0]))
 
-plot_sample_with_binary(sample_dataset_raw_data, preds.squeeze().tolist())
+
+#plot_sample_with_binary(raw_data_test[-11000:-9000], preds.squeeze().tolist()[-11000:-9000])
+
+for data in inf_datasets:
+    pred_count = 0
+    raw_data = data['d'][0]
+    raw_data = norm_data(raw_data)
+    X_sample = torch.tensor(raw_data, dtype=torch.float32).unsqueeze(1)
+    X_sample = X_sample.unsqueeze(0)
+    X_sample = X_sample.permute(0, 2, 1)
+    outputs = model(X_sample.to(device))
+    preds = (outputs > 0.71).float().squeeze().tolist()
+    print(len([x for x in preds if x != 0]))
+    plot_sample_with_binary(raw_data[-30000:-20000], preds[-30000:-20000])
+
+
+
 
 print()

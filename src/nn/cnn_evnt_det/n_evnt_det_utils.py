@@ -25,6 +25,7 @@ from scipy.io import loadmat
 import os
 import numpy as np
 import matplotlib.pyplot as plt
+import copy
 
 import torch
 import torch.nn as nn
@@ -70,7 +71,15 @@ def plot_sample_with_binary(sample, binary_signal):
     plt.tight_layout()
     plt.show(block=False)
 
-def prep_set_train(data, labels, window_size=80, stride=1, window_interleave=3):
+def degrade(raw_data, snr_db):
+    # Compute signal power and desired noise power
+    signal_power = np.mean(raw_data**2)
+    snr_linear = 10 ** (snr_db / 10)
+    noise_power = signal_power / snr_linear
+    noise = np.random.normal(0, np.sqrt(noise_power), size=raw_data.shape)
+    return raw_data + noise
+
+def prep_set_train(data_lists, labels, window_size=80, stride=1, window_interleave=3):
     """
     Package the series and indexes into tensors with respect to the
     required window size and stride length.
@@ -79,21 +88,22 @@ def prep_set_train(data, labels, window_size=80, stride=1, window_interleave=3):
     tensors will represent 2*input_size - window_size 1D datapoints
     """
     X, y = [], []
-    zero_count = 0
     np_lables = np.array(labels)
     noise_c = 0
-    for i in range(0, len(data) - window_size, stride):
-        # get windows with a 10 sample spike onset
-        # for each spike we want window_interleave windows of noise
-        window_split_idx = (window_size*0.8)
-        if np_lables[i+int(window_split_idx)] == 1:
-            X.append(data[i:i + window_size])
-            y.append(labels[i:i + window_size])
-            noise_c = 0
-        elif np_lables[i-window_size:i + window_size].mean() == 0 and noise_c < window_interleave:
-            X.append(data[i:i + window_size])
-            y.append(labels[i:i + window_size])
-            noise_c += 1
+
+    for data in data_lists:
+        for i in range(0, len(data) - window_size, stride):
+            # get windows with a 10 sample spike onset
+            # for each spike we want window_interleave windows of noise
+            window_split_idx = (window_size*0.8)
+            if np_lables[i+int(window_split_idx)] == 1:
+                X.append(data[i:i + window_size])
+                y.append(labels[i:i + window_size])
+                noise_c = 0
+            elif np_lables[i-window_size:i + window_size].mean() == 0 and noise_c < window_interleave:
+                X.append(data[i:i + window_size])
+                y.append(labels[i:i + window_size])
+                noise_c += 1
 
     X = torch.tensor(X, dtype=torch.float32).unsqueeze(1)  # (N, 1, window_size)
     y = torch.tensor(y, dtype=torch.float32)  # (N, window_size)
@@ -117,8 +127,19 @@ def prep_set_val(data, labels, window_size=80, stride=1):
     print(X.size(), y.size())
     return X, y
 
+def norm_data(raw_data):
+    """
+    Norm the whole dataset between 1 and -1
+    centered about zero
+    """
+    ret_val = copy.deepcopy(raw_data)
+    raw_data_max = max(ret_val)
+    raw_data_min = min(ret_val)
+    ret_val = (2 * (ret_val - raw_data_min) /
+               (raw_data_max - raw_data_min) - 1)
+    return ret_val
 
-def prep_set_inf(data, labels, window_size=200):
+def prep_set_inf(data, labels, window_size=80):
     """
     This version id for preparing the inference tensors and will not slide!
     """

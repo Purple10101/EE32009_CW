@@ -38,9 +38,8 @@ import numpy as np
 
 import torch
 
-from src.ext.data_loader_cls import RecordingTrain, plot_sample
 from src.nn.cnn_cls.n_cls import NeuronCNN
-from src.nn.cnn_cls.n_cls_utils import noise_plt_example, prep_training_set
+from src.nn.cnn_cls.n_cls_utils import plot_sample, prep_training_set, RecordingTrain
 
 os.chdir(os.path.dirname(os.path.dirname(os.path.dirname(os.getcwd()))))
 print(os.getcwd())
@@ -50,18 +49,18 @@ print(os.getcwd())
 data = loadmat('data\D1.mat')
 data_inf = loadmat('data\D2.mat')
 
-rec = RecordingTrain(data['d'], data['Index'], data['Class'])
+rec = RecordingTrain(data['d'][0], data['Index'][0], data['Class'][0])
 
 # load model and evaluate performance
 model = NeuronCNN(5)
-model.load_state_dict(torch.load("src/nn/models/20251030_neuron_total_norm.pt"))
+model.load_state_dict(torch.load("src/nn/models/20251103_neuron_total_norm_noise.pt"))
 model.eval()
 
 scorecard = []
 predictions_lst = []
 
 with torch.no_grad():
-    for test_capture in rec.captures_val:
+    for test_capture in rec.captures:
         X = np.array(test_capture["Capture"], dtype=np.float32)
         X = np.expand_dims(X, axis=1)
         X_tensor = torch.tensor(X).T.unsqueeze(0)
@@ -69,11 +68,11 @@ with torch.no_grad():
         predicted = torch.argmax(outputs) + 1 # classes 1-5 not 0-4
         predictions_lst.append(predicted.item())
         real_lb = test_capture["Classification"]
+        #plot_sample(test_capture)
         if predicted == real_lb:
             scorecard.append(1)
         else:
             scorecard.append(0)
-            #plot_sample(test_capture)
 scorecard_array = np.array(scorecard)
 print(f"performance = {scorecard_array.mean()*100}%")
 

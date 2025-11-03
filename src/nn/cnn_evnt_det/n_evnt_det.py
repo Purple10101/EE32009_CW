@@ -4,12 +4,20 @@
  Title:        n_evnt_det.py
  Description:
  Author:       Joshua Poole
- Created on:   20251027
- Version:      1.0
+ Created on:   20251103
+ Version:      2.0
 ===========================================================
 
- Notes:
-    -
+Notes:
+    - Batch Normalization is implemented in this version.
+    - Each convolutional layer output is normalized across the batch dimension.
+        - This ensures each feature channel has a stable mean and variance
+          before being passed to the next layer.
+        - Implemented with nn.BatchNorm1d(...).
+    - Dilation is used to expand the convolution’s receptive field exponentially.
+        - This allows the network to capture a wider temporal context
+          without increasing the number of parameters.
+
 
  Requirements:
     - Python >= 3.11
