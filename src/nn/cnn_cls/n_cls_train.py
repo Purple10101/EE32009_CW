@@ -130,4 +130,4 @@ for epoch in range(num_epochs):
           f"Acc: {acc:.4f} | Prec: {macro_prec:.4f} | "
           f"Rec: {macro_rec:.4f} | F1: {macro_f1:.4f}")
 
-torch.save(model.state_dict(), "src/nn/models/20251103_neuron_total_norm_snr_to_0.pt")
+torch.save(model.state_dict(), "src/nn/models/20251104_neuron_total_norm_mimic_noise.pt")
