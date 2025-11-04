@@ -33,7 +33,9 @@ import torch.nn.functional as F
 from torch.utils.data import TensorDataset, DataLoader
 
 from src.nn.cnn_evnt_det.n_evnt_det import SpikeNet
-from src.nn.cnn_evnt_det.n_evnt_det_utils import plot_sample_with_binary, prep_set_val, norm_data
+from src.nn.cnn_evnt_det.n_evnt_det_utils import (plot_sample_with_binary,
+                                                  prep_set_val, norm_data,
+                                                  nonmax_rejection)
 
 os.chdir(os.path.dirname(os.path.dirname(os.path.dirname(os.getcwd()))))
 print(os.getcwd())
@@ -82,15 +84,16 @@ y_sample = torch.tensor(sample_dataset_idx_bin, dtype=torch.float32)
 
 # load model and evaluate performance
 model = SpikeNet().to(device)
-model.load_state_dict(torch.load("src/nn/models/20251103_neuron_event_det_cnn_dilation.pt"))
+model.load_state_dict(torch.load(
+    "src/nn/models/20251104_neuron_event_det_cnn_dilation_mimic_noise.pt"))
 model.eval()
 
 with torch.no_grad():
     X_sample = X_sample.unsqueeze(0)
     X_sample = X_sample.permute(0, 2, 1)
     outputs = model(X_sample.to(device))
-    preds = (outputs > 0.68).float()
-    print(len([x for x in preds.squeeze().tolist() if x != 0]))
+    preds = nonmax_rejection(outputs.squeeze().tolist(), 0.65)
+    print(len([x for x in preds if x != 0]))
 
 
 #plot_sample_with_binary(raw_data_test[-11000:-9000], preds.squeeze().tolist()[-11000:-9000])
@@ -103,7 +106,7 @@ for data in inf_datasets:
     X_sample = X_sample.unsqueeze(0)
     X_sample = X_sample.permute(0, 2, 1)
     outputs = model(X_sample.to(device))
-    preds = (outputs > 0.71).float().squeeze().tolist()
+    preds = nonmax_rejection(outputs.squeeze().tolist(), 0.65)
     print(len([x for x in preds if x != 0]))
     plot_sample_with_binary(raw_data[-30000:-20000], preds[-30000:-20000])
 

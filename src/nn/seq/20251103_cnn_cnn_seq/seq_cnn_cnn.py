@@ -33,6 +33,8 @@ from torch.utils.data import TensorDataset, DataLoader
 from src.nn.cnn_cls.n_cls import NeuronCNN
 from src.nn.cnn_evnt_det.n_evnt_det import SpikeNet
 
+import src.nn.cnn_evnt_det.n_evnt_det_utils as evnt_det_utils
+
 os.chdir(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.getcwd())))))
 print(os.getcwd())
 
@@ -44,11 +46,13 @@ class RecordingInf:
         self.dataset_id = dataset_id
         # load in models
         self.model_evnt_det = SpikeNet()
-        self.model_evnt_det.load_state_dict(torch.load("src/nn/models/20251103_neuron_event_det_cnn_dilation.pt"))
+        self.model_evnt_det.load_state_dict(torch.load(
+            "src/nn/models/20251104_neuron_event_det_cnn_dilation_mimic_noise.pt"))
         self.model_evnt_det.eval()
 
         self.model_cls = NeuronCNN(5)
-        self.model_cls.load_state_dict(torch.load("src/nn/models/20251103_neuron_total_norm_noise.pt"))
+        self.model_cls.load_state_dict(torch.load(
+            "src/nn/models/20251104_neuron_total_norm_mimic_noise.pt"))
         self.model_cls.eval()
 
         # data prep
@@ -118,25 +122,17 @@ class RecordingInf:
         return captures_list
 
     def event_det_inf(self, threshold):
-        X_tensors = self.prep_event_det_inf(self.data_norm)
-        T_dataset = TensorDataset(X_tensors)
-        loader = DataLoader(T_dataset, batch_size=32, shuffle=False)
 
-        infered_events_bin = []
-        prediction_count = 0
         self.model_evnt_det.eval()
         with torch.no_grad():
-            for X_batch in loader:
-                outputs = self.model_evnt_det(X_batch[0])
-                preds = (outputs > threshold).float()
-                infered_events_bin.extend(preds.flatten().tolist())
-                prediction_count += preds.size(0) * preds.size(1)
+            X_sample = torch.tensor(self.data_norm, dtype=torch.float32).unsqueeze(1)
+            X_sample = X_sample.unsqueeze(0)
+            X_sample = X_sample.permute(0, 2, 1)
+            outputs = self.model_evnt_det(X_sample)
+            preds = evnt_det_utils.nonmax_rejection(outputs.squeeze().tolist(), 0.65)
 
-        output_indexes = []
-        for idx, val in enumerate(infered_events_bin):
-            if val == 1:
-                output_indexes.append(idx)
-        return output_indexes, infered_events_bin
+        output_indexes = np.where(preds > threshold)[0]
+        return output_indexes, preds
 
     def cls_inf(self):
         captures_list = self.split_spike()

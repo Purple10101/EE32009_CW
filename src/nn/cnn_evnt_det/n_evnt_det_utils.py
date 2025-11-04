@@ -26,6 +26,8 @@ import os
 import numpy as np
 import matplotlib.pyplot as plt
 import copy
+from scipy.signal import medfilt
+from scipy.ndimage import uniform_filter1d
 
 import torch
 import torch.nn as nn
@@ -71,15 +73,7 @@ def plot_sample_with_binary(sample, binary_signal):
     plt.tight_layout()
     plt.show(block=False)
 
-def degrade(raw_data, snr_db):
-    # Compute signal power and desired noise power
-    signal_power = np.mean(raw_data**2)
-    snr_linear = 10 ** (snr_db / 10)
-    noise_power = signal_power / snr_linear
-    noise = np.random.normal(0, np.sqrt(noise_power), size=raw_data.shape)
-    return raw_data + noise
-
-def prep_set_train(data_lists, labels, window_size=80, stride=1, window_interleave=3):
+def prep_set_train(data_lists, labels, window_size=80, stride=1, window_interleave=2):
     """
     Package the series and indexes into tensors with respect to the
     required window size and stride length.
@@ -152,3 +146,63 @@ def prep_set_inf(data, labels, window_size=80):
     y = torch.tensor(y, dtype=torch.float32)  # (N, window_size)
     print(X.size(), y.size())
     return X, y
+
+def nonmax_rejection(preds, threshold, refractory=10):
+    preds = np.array(preds)
+    candidate_indices = np.where(preds > threshold)[0]
+
+
+    final_spikes = []
+    i = 0
+    while i < len(candidate_indices):
+        start = candidate_indices[i]
+        region = candidate_indices[(candidate_indices >= start) &
+                                   (candidate_indices < start + refractory)]
+        best = region[np.argmax(preds[region])]
+        final_spikes.append(best)
+        i += len(region)
+    labels_bin = np.isin(np.arange(len(preds)), final_spikes).astype(int)
+    return labels_bin
+
+def estimate_noise_std(signal, kernel_size=101):
+    # Rough estimate: remove slow-varying structure with median filter
+    smooth = medfilt(signal, kernel_size=kernel_size)
+    residual = signal - smooth
+    return np.std(residual)
+
+def degrade(raw_data, mimic_sig, noise_scale=1):
+    """
+    noise turning for different levels:
+    60dB - noise_scale=0.25
+    40dB - noise_scale=0.4
+    20dB - noise_scale=0.6
+    0dB - noise_scale=0.8
+    sub 0dB - noise_scale=1
+    """
+    # --- Extract noise reference (zero-mean) ---
+    noise_ref = mimic_sig - np.mean(mimic_sig)
+
+    # --- Compute reference noise spectrum magnitude ---
+    fft_noise = np.fft.rfft(noise_ref)
+    mag_noise = np.abs(fft_noise)
+    mag_noise_smooth = uniform_filter1d(mag_noise, size=15)
+
+    # --- Generate random-phase noise with same spectral shape ---
+    phase = np.exp(1j * 2 * np.pi * np.random.rand(len(mag_noise)))
+    colored_noise = np.fft.irfft(mag_noise_smooth * phase)
+    colored_noise -= np.mean(colored_noise)
+    # --- Emphasize high frequencies to tighten noise around zero ---
+    freqs = np.fft.rfftfreq(len(noise_ref))
+    tilt = (freqs / freqs.max()) ** 0.5  # gentle boost toward high freq
+    mag_shaped = mag_noise_smooth * tilt
+    colored_noise = np.fft.irfft(mag_shaped * phase)
+
+    # --- Scale noise strength ---
+    target_rms = np.std(mimic_sig)
+    current_rms = np.std(colored_noise)
+    colored_noise *= (target_rms / (current_rms + 1e-12)) * noise_scale
+
+    # --- Inject noise into clean signal ---
+    noisy_out = raw_data + colored_noise
+
+    return noisy_out

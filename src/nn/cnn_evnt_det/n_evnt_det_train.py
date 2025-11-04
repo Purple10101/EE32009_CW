@@ -51,14 +51,19 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print(f"Using device: {device}")
 
 data = loadmat('data\D1.mat')
+data2 = loadmat('data\D2.mat')
+data3 = loadmat('data\D3.mat')
+data4 = loadmat('data\D4.mat')
+data5 = loadmat('data\D5.mat')
+data6 = loadmat('data\D6.mat')
 
 # raw datasets
 raw_data_80 = norm_data(data['d'][0])
-raw_data_60 = norm_data(degrade(data['d'][0], 60))
-raw_data_40 = norm_data(degrade(data['d'][0], 40))
-raw_data_20 = norm_data(degrade(data['d'][0], 20))
-raw_data_0 = norm_data(degrade(data['d'][0], 0))
-raw_data_sub0 = norm_data(degrade(data['d'][0], -10))
+raw_data_60 = norm_data(degrade(data['d'][0], data2['d'][0], 0.25))
+raw_data_40 = norm_data(degrade(data['d'][0], data3['d'][0], 0.4))
+raw_data_20 = norm_data(degrade(data['d'][0], data4['d'][0], 0.6))
+raw_data_0 = norm_data(degrade(data['d'][0], data5['d'][0], 0.8))
+raw_data_sub0 = norm_data(degrade(data['d'][0], data6['d'][0], 1))
 
 # pred truth list
 idx_lst = data['Index'][0]
@@ -79,9 +84,9 @@ raw_data_train_60 = raw_data_60[:split_index_raw]
 raw_data_train_40 = raw_data_40[:split_index_raw]
 raw_data_train_20 = raw_data_20[:split_index_raw]
 raw_data_train_0 = raw_data_0[:split_index_raw]
-raw_data_train_sub0 = raw_data_sub0[:split_index_raw]
+#raw_data_train_sub0 = raw_data_sub0[:split_index_raw]
 raw_data_lists = [raw_data_train_80, raw_data_train_60, raw_data_train_40,
-                  raw_data_train_20, raw_data_train_0, raw_data_train_sub0]
+                  raw_data_train_20, raw_data_train_0]
 
 idx_bin_train = labels_bin[:split_index_raw]
 
@@ -91,8 +96,9 @@ plot_sample_with_binary(raw_data_train_60, idx_bin_train)
 plot_sample_with_binary(raw_data_train_40, idx_bin_train)
 plot_sample_with_binary(raw_data_train_20, idx_bin_train)
 plot_sample_with_binary(raw_data_train_0, idx_bin_train)
-plot_sample_with_binary(raw_data_train_sub0, idx_bin_train)"""
-
+"""
+#plot_sample_with_binary(degrade(data['d'][0], data6['d'][0])[-10000:], labels_bin[-10000:])
+#plot_sample_with_binary(data6["d"][0][-10000:], data6["d"][0][-10000:])
 
 
 X_t, y_t = prep_set_train(raw_data_lists, idx_bin_train)
@@ -118,7 +124,7 @@ criterion = nn.BCELoss()
 optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
 
 
-traning_start_th = 0.68
+traning_start_th = 0.65
 
 # training
 num_epochs = 200
@@ -205,11 +211,11 @@ for epoch in range(num_epochs):
     #    f"  Val   Loss: {val_loss:.4f} | Acc: {val_acc:.4f} | Prec: {val_prec:.4f} | Rec: {val_rec:.4f} | F1: {val_f1:.4f}")
     print("-" * 70)
 
-torch.save(model.state_dict(), "src/nn/models/20251103_neuron_event_det_cnn_dilation.pt")
+torch.save(model.state_dict(), "src/nn/models/20251104_neuron_event_det_cnn_dilation_mimic_noise.pt")
 
 # load model and evaluate performance
 model = SpikeNet().to(device)
-model.load_state_dict(torch.load("src/nn/models/20251103_neuron_event_det_cnn_dilation.pt"))
+model.load_state_dict(torch.load("src/nn/models/20251104_neuron_event_det_cnn_dilation_mimic_noise.pt"))
 model.eval()
 
 with torch.no_grad():

@@ -53,14 +53,14 @@ rec = RecordingTrain(data['d'][0], data['Index'][0], data['Class'][0])
 
 # load model and evaluate performance
 model = NeuronCNN(5)
-model.load_state_dict(torch.load("src/nn/models/20251103_neuron_total_norm_noise.pt"))
+model.load_state_dict(torch.load("src/nn/models/20251104_neuron_total_norm_mimic_noise.pt"))
 model.eval()
 
 scorecard = []
 predictions_lst = []
 
 with torch.no_grad():
-    for test_capture in rec.captures:
+    for test_capture in rec.captures_val:
         X = np.array(test_capture["Capture"], dtype=np.float32)
         X = np.expand_dims(X, axis=1)
         X_tensor = torch.tensor(X).T.unsqueeze(0)
