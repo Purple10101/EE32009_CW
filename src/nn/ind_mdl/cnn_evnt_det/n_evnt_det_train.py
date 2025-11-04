@@ -24,29 +24,20 @@
 from scipy.io import loadmat
 import os
 import numpy as np
-import matplotlib.pyplot as plt
 
 import torch
 import torch.nn as nn
-import copy
-import torch.optim as optim
-import torch.nn.functional as F
 from torch.utils.data import TensorDataset, DataLoader
-from torchvision.ops import sigmoid_focal_loss
 
-
-from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
-
-from src.nn.cnn_evnt_det.n_evnt_det import SpikeNet
-from src.nn.cnn_evnt_det.n_evnt_det_utils import (plot_sample_with_binary,
-                                                  prep_set_train, prep_set_val,
-                                                  norm_data, degrade)
-
-from sklearn.metrics import precision_recall_curve
-
-
-os.chdir(os.path.dirname(os.path.dirname(os.path.dirname(os.getcwd()))))
+os.chdir(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.getcwd())))))
 print(os.getcwd())
+
+from src.nn.ind_mdl.cnn_evnt_det.n_evnt_det import SpikeNet
+from src.nn.ind_mdl.cnn_evnt_det.n_evnt_det_utils import (plot_sample_with_binary,
+                                                          prep_set_train, prep_set_val,
+                                                          norm_data, degrade, denoise_fft)
+
+
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print(f"Using device: {device}")
 
@@ -59,7 +50,13 @@ data6 = loadmat('data\D6.mat')
 
 # raw datasets
 raw_data_80 = norm_data(data['d'][0])
+denoise_data_80 = denoise_fft(raw_data_80)
+
 raw_data_60 = norm_data(degrade(data['d'][0], data2['d'][0], 0.25))
+denoise_data_60 = denoise_fft(raw_data_60)
+
+
+
 raw_data_40 = norm_data(degrade(data['d'][0], data3['d'][0], 0.4))
 raw_data_20 = norm_data(degrade(data['d'][0], data4['d'][0], 0.6))
 raw_data_0 = norm_data(degrade(data['d'][0], data5['d'][0], 0.8))
@@ -84,29 +81,29 @@ raw_data_train_60 = raw_data_60[:split_index_raw]
 raw_data_train_40 = raw_data_40[:split_index_raw]
 raw_data_train_20 = raw_data_20[:split_index_raw]
 raw_data_train_0 = raw_data_0[:split_index_raw]
-#raw_data_train_sub0 = raw_data_sub0[:split_index_raw]
-raw_data_lists = [raw_data_train_80, raw_data_train_60, raw_data_train_40,
-                  raw_data_train_20, raw_data_train_0]
+raw_data_train_sub0 = raw_data_sub0[:split_index_raw]
 
 idx_bin_train = labels_bin[:split_index_raw]
 
-"""# remove for run: plotting
-plot_sample_with_binary(raw_data_train_80, idx_bin_train)
-plot_sample_with_binary(raw_data_train_60, idx_bin_train)
-plot_sample_with_binary(raw_data_train_40, idx_bin_train)
-plot_sample_with_binary(raw_data_train_20, idx_bin_train)
-plot_sample_with_binary(raw_data_train_0, idx_bin_train)
-"""
-plot_sample_with_binary(degrade(data['d'][0], data3['d'][0], 0.4)[-10000:], labels_bin[-10000:])
-plot_sample_with_binary(data3["d"][0][-10000:], data3["d"][0][-10000:])
 
 
-X_t, y_t = prep_set_train(raw_data_lists, idx_bin_train)
+# uncomment for plotting example
+#plot_sample_with_binary(degrade(data['d'][0], data3['d'][0], 0.4)[-10000:], labels_bin[-10000:])
+#plot_sample_with_binary(data3["d"][0][-10000:], data3["d"][0][-10000:])
+plot_sample_with_binary(denoise_data_60[-10000: -5000], labels_bin[-10000: -5000])
+plot_sample_with_binary(denoise_data_80[-10000: -5000], labels_bin[-10000: -5000])
+raw_data_d2 = norm_data(data6['d'][0])
+denoise_data_d2 = denoise_fft(raw_data_d2)
+plot_sample_with_binary(denoise_data_d2[-10000:], denoise_data_d2[-10000:])
+
+# lets start by traning a d2 model:
+
+X_t, y_t = prep_set_train(raw_data_train_60, idx_bin_train)
 dataset_t = TensorDataset(X_t, y_t)
 loader_t = DataLoader(dataset_t, batch_size=64, shuffle=True)
 
 # val data
-raw_data_val = raw_data_80[split_index_raw:]
+raw_data_val = raw_data_60[split_index_raw:]
 idx_bin_val = labels_bin[split_index_raw:]
 X_v, y_v = prep_set_val(raw_data_val, idx_bin_val)
 dataset_v = TensorDataset(X_v, y_v)
@@ -121,13 +118,13 @@ y_sample = torch.tensor(sample_dataset_idx_bin, dtype=torch.float32)
 # model
 model = SpikeNet().to(device)
 criterion = nn.BCELoss()
-optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
+optimizer = torch.optim.Adam(model.parameters(), lr=1e-4)
 
 
-traning_start_th = 0.65
+traning_start_th = 0.6
 
 # training
-num_epochs = 200
+num_epochs = 500
 
 for epoch in range(num_epochs):
 
@@ -211,11 +208,11 @@ for epoch in range(num_epochs):
     #    f"  Val   Loss: {val_loss:.4f} | Acc: {val_acc:.4f} | Prec: {val_prec:.4f} | Rec: {val_rec:.4f} | F1: {val_f1:.4f}")
     print("-" * 70)
 
-torch.save(model.state_dict(), "src/nn/models/20251104_neuron_event_det_cnn_dilation_mimic_noise.pt")
+torch.save(model.state_dict(), "src/nn/ind_mdl/models/D2/20251104_neuron_event_det_cnn_D2.pt")
 
 # load model and evaluate performance
 model = SpikeNet().to(device)
-model.load_state_dict(torch.load("src/nn/models/20251104_neuron_event_det_cnn_dilation_mimic_noise.pt"))
+model.load_state_dict(torch.load("src/nn/ind_mdl/models/D2/20251104_neuron_event_det_cnn_D2.pt"))
 model.eval()
 
 with torch.no_grad():
@@ -230,23 +227,33 @@ missed_spk_c = 0
 scorecard_0 = []
 false_spk_c = 0
 
-preds_lst = preds.squeeze().tolist()
-for idx in range(len(preds_lst)):
-    pred = preds_lst[idx]
-    real = sample_dataset_idx_bin[idx]
-    if real == 0:
-        if pred == real:
-            scorecard_0.append(1)
-        else:
-            scorecard_0.append(0)
-            false_spk_c += 1
+tolerance = 50
 
-    if real == 1:
-        if pred == real:
-            scorecard_1.append(1)
+preds_lst = np.array(preds.squeeze().tolist())
+idx_bin_val = np.array(idx_bin_val)
+
+matched = np.zeros_like(preds_lst)
+
+for i in range(len(idx_bin_val)):
+    if idx_bin_val[i] == 1:
+        # define the leeway window
+        start = max(0, i - tolerance)
+        end = min(len(preds_lst), i + tolerance + 1)
+        # if any prediction is 1 in this window, mark it matched
+        if np.any(preds_lst[start:end] == 1):
+            matched[i] = 1
         else:
-            scorecard_1.append(0)
             missed_spk_c += 1
+    elif idx_bin_val[i] == 0:
+        start = max(0, i - tolerance)
+
+# for false spikes, check predicted 1s not near any true 1s
+for i in range(len(preds_lst)):
+    if preds_lst[i] == 1:
+        start = max(0, i - tolerance)
+        end = min(len(idx_bin_val), i + tolerance + 1)
+        if not np.any(idx_bin_val[start:end] == 1):
+            false_spk_c += 1
 
 num_known_spikes = len([x for x in sample_dataset_idx_bin if x != 0])
 

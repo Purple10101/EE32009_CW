@@ -35,7 +35,7 @@ import torch.optim as optim
 import torch.nn.functional as F
 from torch.utils.data import TensorDataset, DataLoader
 
-from src.nn.cnn_evnt_det.n_evnt_det import SpikeNet
+from src.nn.ind_mdl.cnn_evnt_det.n_evnt_det import SpikeNet
 
 
 def plot_sample_with_binary(sample, binary_signal):
@@ -73,7 +73,28 @@ def plot_sample_with_binary(sample, binary_signal):
     plt.tight_layout()
     plt.show(block=False)
 
-def prep_set_train(data_lists, labels, window_size=80, stride=1, window_interleave=2):
+def denoise_butt(noisy_signal, fs=25000, lowcut=300, highcut=3000, order=4):
+    from scipy.signal import butter, filtfilt
+    nyq = 0.5 * fs
+    low = lowcut / nyq
+    high = highcut / nyq
+    b, a = butter(order, [low, high], btype='band')
+    filtered = filtfilt(b, a, noisy_signal)
+    return filtered
+
+def denoise_fft(noisy_signal, fs=25000, cutoff=1000):
+    fft_vals = np.fft.fft(noisy_signal)
+    fft_freqs = np.fft.fftfreq(len(noisy_signal), 1 / fs)
+
+    fft_filtered = fft_vals.copy()
+    fft_filtered[np.abs(fft_freqs) > cutoff] = 0
+
+    filtered_signal = np.fft.ifft(fft_filtered)
+
+    return filtered_signal.real
+
+
+def prep_set_train(data, labels, window_size=80, stride=1, window_interleave=3):
     """
     Package the series and indexes into tensors with respect to the
     required window size and stride length.
@@ -84,27 +105,25 @@ def prep_set_train(data_lists, labels, window_size=80, stride=1, window_interlea
     X, y = [], []
     np_lables = np.array(labels)
     noise_c = 0
-
-    for data in data_lists:
-        for i in range(0, len(data) - window_size, stride):
-            # get windows with a 10 sample spike onset
-            # for each spike we want window_interleave windows of noise
-            window_split_idx = (window_size*0.8)
-            if np_lables[i+int(window_split_idx)] == 1:
-                X.append(data[i:i + window_size])
-                y.append(labels[i:i + window_size])
-                noise_c = 0
-            elif np_lables[i-window_size:i + window_size].mean() == 0 and noise_c < window_interleave:
-                X.append(data[i:i + window_size])
-                y.append(labels[i:i + window_size])
-                noise_c += 1
+    for i in range(0, len(data) - window_size, stride):
+        # get windows with a 10 sample spike onset
+        # for each spike we want window_interleave windows of noise
+        window_split_idx = (window_size*0.8)
+        if np_lables[i+int(window_split_idx)] == 1:
+            X.append(data[i:i + window_size])
+            y.append(labels[i:i + window_size])
+            noise_c = 0
+        elif np_lables[i-window_size:i + window_size].mean() == 0 and noise_c < window_interleave:
+            X.append(data[i:i + window_size])
+            y.append(labels[i:i + window_size])
+            noise_c += 1
 
     X = torch.tensor(X, dtype=torch.float32).unsqueeze(1)  # (N, 1, window_size)
     y = torch.tensor(y, dtype=torch.float32)  # (N, window_size)
     print(X.size(), y.size())
     return X, y
 
-def prep_set_val(data, labels, window_size=80, stride=1):
+def prep_set_val(data, labels, window_size=64, stride=1):
     """
     Package the series and indexes into tensors with respect to the
     required window size and stride length.
@@ -163,12 +182,6 @@ def nonmax_rejection(preds, threshold, refractory=10):
         i += len(region)
     labels_bin = np.isin(np.arange(len(preds)), final_spikes).astype(int)
     return labels_bin
-
-def estimate_noise_std(signal, kernel_size=101):
-    # Rough estimate: remove slow-varying structure with median filter
-    smooth = medfilt(signal, kernel_size=kernel_size)
-    residual = signal - smooth
-    return np.std(residual)
 
 def degrade(raw_data, mimic_sig, noise_scale=1):
     """
