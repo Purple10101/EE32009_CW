@@ -35,7 +35,8 @@ print(os.getcwd())
 from src.nn.ind_mdl.cnn_evnt_det.n_evnt_det import SpikeNet
 from src.nn.ind_mdl.cnn_evnt_det.n_evnt_det_utils import (plot_sample_with_binary,
                                                           prep_set_train, prep_set_val,
-                                                          norm_data, degrade, denoise_fft)
+                                                          norm_data, degrade, filter_wavelet,
+                                                          widen_labels)
 
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -49,67 +50,44 @@ data5 = loadmat('data\D5.mat')
 data6 = loadmat('data\D6.mat')
 
 # raw datasets
-raw_data_80 = norm_data(data['d'][0])
-denoise_data_80 = denoise_fft(raw_data_80)
+wl_filt_data_80 = filter_wavelet(data['d'][0])
+norm_wl_filt_80 = norm_data(wl_filt_data_80)
 
-raw_data_60 = norm_data(degrade(data['d'][0], data2['d'][0], 0.25))
-denoise_data_60 = denoise_fft(raw_data_60)
-
-
-
-raw_data_40 = norm_data(degrade(data['d'][0], data3['d'][0], 0.4))
-raw_data_20 = norm_data(degrade(data['d'][0], data4['d'][0], 0.6))
-raw_data_0 = norm_data(degrade(data['d'][0], data5['d'][0], 0.8))
-raw_data_sub0 = norm_data(degrade(data['d'][0], data6['d'][0], 1))
 
 # pred truth list
 idx_lst = data['Index'][0]
 tr_to_tst_r=0.8
 
 labels_bin = []
-for y in range(raw_data_80.shape[0]):
+for y in range(data['d'][0].shape[0]):
     if y in idx_lst:
         labels_bin.append(1)
     else:
         labels_bin.append(0)
+labels_bin = widen_labels(np.array(labels_bin))
 
-split_index_raw = int(len(raw_data_80) * tr_to_tst_r)
+split_index_raw = int(len(data['d'][0]) * tr_to_tst_r)
 
-# training data
-raw_data_train_80 = raw_data_80[:split_index_raw]
-raw_data_train_60 = raw_data_60[:split_index_raw]
-raw_data_train_40 = raw_data_40[:split_index_raw]
-raw_data_train_20 = raw_data_20[:split_index_raw]
-raw_data_train_0 = raw_data_0[:split_index_raw]
-raw_data_train_sub0 = raw_data_sub0[:split_index_raw]
-
+# training data and 2d comparison
+norm_wl_filt_80_train = norm_wl_filt_80[:split_index_raw]
 idx_bin_train = labels_bin[:split_index_raw]
+d2_denoise_norm = norm_data(filter_wavelet(data2['d'][0]))
+# plotting for visual clarification
+plot_sample_with_binary(norm_wl_filt_80_train[-200000:], idx_bin_train[-200000:])
+plot_sample_with_binary(d2_denoise_norm[-200000:], d2_denoise_norm[-200000:])
 
-
-
-# uncomment for plotting example
-#plot_sample_with_binary(degrade(data['d'][0], data3['d'][0], 0.4)[-10000:], labels_bin[-10000:])
-#plot_sample_with_binary(data3["d"][0][-10000:], data3["d"][0][-10000:])
-plot_sample_with_binary(denoise_data_60[-10000: -5000], labels_bin[-10000: -5000])
-plot_sample_with_binary(denoise_data_80[-10000: -5000], labels_bin[-10000: -5000])
-raw_data_d2 = norm_data(data6['d'][0])
-denoise_data_d2 = denoise_fft(raw_data_d2)
-plot_sample_with_binary(denoise_data_d2[-10000:], denoise_data_d2[-10000:])
-
-# lets start by traning a d2 model:
-
-X_t, y_t = prep_set_train(raw_data_train_60, idx_bin_train)
+X_t, y_t = prep_set_train(norm_wl_filt_80_train, idx_bin_train)
 dataset_t = TensorDataset(X_t, y_t)
 loader_t = DataLoader(dataset_t, batch_size=64, shuffle=True)
 
 # val data
-raw_data_val = raw_data_60[split_index_raw:]
+raw_data_val = norm_wl_filt_80[split_index_raw:]
 idx_bin_val = labels_bin[split_index_raw:]
-X_v, y_v = prep_set_val(raw_data_val, idx_bin_val)
+"""X_v, y_v = prep_set_val(raw_data_val, idx_bin_val)
 dataset_v = TensorDataset(X_v, y_v)
-loader_v = DataLoader(dataset_v, batch_size=64, shuffle=True)
+loader_v = DataLoader(dataset_v, batch_size=64, shuffle=True)"""
 
-# plotting sample data
+# plotting sample data for visual validation
 sample_dataset_raw_data = raw_data_val
 sample_dataset_idx_bin = idx_bin_val
 X_sample = torch.tensor(sample_dataset_raw_data, dtype=torch.float32).unsqueeze(1)
@@ -121,10 +99,10 @@ criterion = nn.BCELoss()
 optimizer = torch.optim.Adam(model.parameters(), lr=1e-4)
 
 
-traning_start_th = 0.6
+traning_start_th = 0.7
 
 # training
-num_epochs = 500
+num_epochs = 100
 
 for epoch in range(num_epochs):
 
@@ -208,11 +186,11 @@ for epoch in range(num_epochs):
     #    f"  Val   Loss: {val_loss:.4f} | Acc: {val_acc:.4f} | Prec: {val_prec:.4f} | Rec: {val_rec:.4f} | F1: {val_f1:.4f}")
     print("-" * 70)
 
-torch.save(model.state_dict(), "src/nn/ind_mdl/models/D2/20251104_neuron_event_det_cnn_D2.pt")
+torch.save(model.state_dict(), "src/nn/ind_mdl/models/D2/20251110_neuron_event_det_cnn_D2_D4.pt")
 
 # load model and evaluate performance
 model = SpikeNet().to(device)
-model.load_state_dict(torch.load("src/nn/ind_mdl/models/D2/20251104_neuron_event_det_cnn_D2.pt"))
+model.load_state_dict(torch.load("src/nn/ind_mdl/models/D2/20251110_neuron_event_det_cnn_D2_D4.pt"))
 model.eval()
 
 with torch.no_grad():

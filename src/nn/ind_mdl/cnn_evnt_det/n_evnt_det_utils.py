@@ -26,16 +26,11 @@ import os
 import numpy as np
 import matplotlib.pyplot as plt
 import copy
-from scipy.signal import medfilt
 from scipy.ndimage import uniform_filter1d
+import pywt
+from scipy.signal import butter, filtfilt
 
 import torch
-import torch.nn as nn
-import torch.optim as optim
-import torch.nn.functional as F
-from torch.utils.data import TensorDataset, DataLoader
-
-from src.nn.ind_mdl.cnn_evnt_det.n_evnt_det import SpikeNet
 
 
 def plot_sample_with_binary(sample, binary_signal):
@@ -73,28 +68,36 @@ def plot_sample_with_binary(sample, binary_signal):
     plt.tight_layout()
     plt.show(block=False)
 
-def denoise_butt(noisy_signal, fs=25000, lowcut=300, highcut=3000, order=4):
-    from scipy.signal import butter, filtfilt
+def filter_wavelet(signal, fs=25000):
+    # High-pass filter to remove slow drift
+    # This is only present in the final two datasets I think
     nyq = 0.5 * fs
-    low = lowcut / nyq
-    high = highcut / nyq
-    b, a = butter(order, [low, high], btype='band')
-    filtered = filtfilt(b, a, noisy_signal)
-    return filtered
+    b, a = butter(3,   10 / nyq, btype='high')
+    signal_hp = filtfilt(b, a, signal)
 
-def denoise_fft(noisy_signal, fs=25000, cutoff=1000):
-    fft_vals = np.fft.fft(noisy_signal)
-    fft_freqs = np.fft.fftfreq(len(noisy_signal), 1 / fs)
+    # Wavelet denoising
+    wavelet = 'db4'
+    coeffs = pywt.wavedec(signal_hp, wavelet, level=5)
 
-    fft_filtered = fft_vals.copy()
-    fft_filtered[np.abs(fft_freqs) > cutoff] = 0
+    sigma = np.median(np.abs(coeffs[-1])) / 0.6745
+    uthresh = 0.7 * sigma * np.sqrt(2 * np.log(len(signal_hp))) # tuned 0.7 try other else
 
-    filtered_signal = np.fft.ifft(fft_filtered)
+    coeffs_thresh = [pywt.threshold(c, value=uthresh, mode='soft') for c in coeffs]
+    clean_wavelet = pywt.waverec(coeffs_thresh, wavelet)
 
-    return filtered_signal.real
+    return clean_wavelet
 
+def widen_labels(labels, width=3):
+    """Expand binary 1s in a 1D label array by ±width samples."""
+    expanded = np.zeros_like(labels)
+    idx = np.where(labels == 1)[0]
+    for i in idx:
+        start = max(0, i - width)
+        end = min(len(labels), i + width + 1)
+        expanded[start:end] = 1
+    return expanded
 
-def prep_set_train(data, labels, window_size=80, stride=1, window_interleave=3):
+def prep_set_train(data, labels, window_size=128, stride=1, window_interleave=1):
     """
     Package the series and indexes into tensors with respect to the
     required window size and stride length.
@@ -108,10 +111,11 @@ def prep_set_train(data, labels, window_size=80, stride=1, window_interleave=3):
     for i in range(0, len(data) - window_size, stride):
         # get windows with a 10 sample spike onset
         # for each spike we want window_interleave windows of noise
-        window_split_idx = (window_size*0.8)
-        if np_lables[i+int(window_split_idx)] == 1:
+        window_split_idx = [int(window_size * 0.5)]
+        if any(np_lables[i + int(idx)] == 1 for idx in window_split_idx):
             X.append(data[i:i + window_size])
             y.append(labels[i:i + window_size])
+            #plot_sample_with_binary(data[i:i + window_size], labels[i:i + window_size])
             noise_c = 0
         elif np_lables[i-window_size:i + window_size].mean() == 0 and noise_c < window_interleave:
             X.append(data[i:i + window_size])
@@ -169,8 +173,6 @@ def prep_set_inf(data, labels, window_size=80):
 def nonmax_rejection(preds, threshold, refractory=10):
     preds = np.array(preds)
     candidate_indices = np.where(preds > threshold)[0]
-
-
     final_spikes = []
     i = 0
     while i < len(candidate_indices):
