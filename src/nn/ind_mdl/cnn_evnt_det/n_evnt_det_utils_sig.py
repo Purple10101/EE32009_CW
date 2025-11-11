@@ -1,10 +1,10 @@
 # -*- coding: utf-8 -*-
 """
 ===========================================================
- Title:        n_evnt_det_utils.py
+ Title:        n_evnt_det_utils_sig.py
  Description:
  Author:       Joshua Poole
- Created on:   20251028
+ Created on:   20251111
  Version:      1.0
 ===========================================================
 

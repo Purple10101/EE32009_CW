@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
 ===========================================================
- Title:        nsig_evnt_det_train.py
+ Title:        n_evnt_det_train.py
  Description:
  Author:       Joshua Poole
  Created on:   20251111

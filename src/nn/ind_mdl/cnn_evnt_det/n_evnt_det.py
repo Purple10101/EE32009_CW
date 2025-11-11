@@ -4,8 +4,8 @@
  Title:        n_evnt_det.py
  Description:
  Author:       Joshua Poole
- Created on:   20251103
- Version:      2.0
+ Created on:   20251111
+ Version:      3.0
 ===========================================================
 
 Notes:
