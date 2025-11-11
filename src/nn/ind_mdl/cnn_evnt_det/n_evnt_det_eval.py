@@ -1,15 +1,16 @@
 # -*- coding: utf-8 -*-
 """
 ===========================================================
- Title:        n_evnt_det_eval.py
+ Title:        nsig_evnt_det_eval.py
  Description:
  Author:       Joshua Poole
- Created on:   20251028
+ Created on:   20251111
  Version:      1.0
 ===========================================================
 
  Notes:
-    -
+    - This version requires dimensionality to be maintained
+      in the prediction output.
 
  Requirements:
     - Python >= 3.11
@@ -21,30 +22,31 @@
 ==================
 """
 
+import numpy as np
 from scipy.io import loadmat
 import os
-import numpy as np
-import matplotlib.pyplot as plt
+from pathlib import Path
 
 import torch
-import torch.nn as nn
-import torch.optim as optim
-import torch.nn.functional as F
 from torch.utils.data import TensorDataset, DataLoader
 
 from src.nn.ind_mdl.cnn_evnt_det.n_evnt_det import SpikeNet
-from src.nn.ind_mdl.cnn_evnt_det.n_evnt_det_utils import (plot_sample_with_binary,
-                                                          prep_set_train, prep_set_val,
-                                                          norm_data, degrade, filter_wavelet,
-                                                          nonmax_rejection)
+from src.nn.ind_mdl.cnn_evnt_det.n_evnt_det_utils_nn import *
+from src.nn.ind_mdl.cnn_evnt_det.n_evnt_det_utils_sig import *
 
 
-os.chdir(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.getcwd())))))
+dir_name = "EE32009_CW"
+p = Path.cwd()
+while p.name != dir_name:
+    if p.parent == p:
+        raise FileNotFoundError(f"Directory '{dir_name}' not found above {Path.cwd()}")
+    p = p.parent
+os.chdir(p)
 print(os.getcwd())
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-data = loadmat('data\D1.mat')
+data1 = loadmat('data\D1.mat')
 data2 = loadmat('data\D2.mat')
 data3 = loadmat('data\D3.mat')
 data4 = loadmat('data\D4.mat')
@@ -52,65 +54,107 @@ data5 = loadmat('data\D5.mat')
 data6 = loadmat('data\D6.mat')
 
 # raw datasets
-wl_filt_data_80 = filter_wavelet(data['d'][0])
-norm_wl_filt_80 = norm_data(wl_filt_data_80)
+raw_data_80 = norm_data(data1['d'][0])
+raw_data_60 = norm_data(degrade(data1['d'][0], data2['d'][0],0.25))
+raw_data_40 = norm_data(degrade(data1['d'][0], data3['d'][0], 0.4))
+raw_data_20 = norm_data(degrade(data1['d'][0], data4['d'][0], 0.6))
+raw_data_0 = norm_data(degrade(data1['d'][0], data5['d'][0], 0.8))
+raw_data_sub0 = norm_data(degrade(data1['d'][0], data6['d'][0], 1))
 
 
 # pred truth list
-idx_lst = data['Index'][0]
+idx_lst = data1['Index'][0]
 tr_to_tst_r=0.8
 
 labels_bin = []
-for y in range(data['d'][0].shape[0]):
+for y in range(data1['d'][0].shape[0]):
     if y in idx_lst:
         labels_bin.append(1)
     else:
         labels_bin.append(0)
-
-split_index_raw = int(len(data['d'][0]) * tr_to_tst_r)
+labels_bin = widen_labels(np.array(labels_bin))
+split_index_raw = int(len(data1['d'][0]) * tr_to_tst_r)
 
 
 # val data
-raw_data_val = norm_wl_filt_80[split_index_raw:]
+raw_data_val = raw_data_60[split_index_raw:]
 idx_bin_val = labels_bin[split_index_raw:]
-"""X_v, y_v = prep_set_val(raw_data_val, idx_bin_val)
+X_v, y_v, index_map_v = prep_set_val(raw_data_val, idx_bin_val)
 dataset_v = TensorDataset(X_v, y_v)
-loader_v = DataLoader(dataset_v, batch_size=64, shuffle=True)"""
+loader_v = DataLoader(dataset_v, batch_size=64, shuffle=False)
 
-# plotting sample data for visual validation
-sample_dataset_raw_data = raw_data_val
-sample_dataset_idx_bin = idx_bin_val
-X_sample = torch.tensor(sample_dataset_raw_data, dtype=torch.float32).unsqueeze(1)
-y_sample = torch.tensor(sample_dataset_idx_bin, dtype=torch.float32)
-
-#d2 for visual confirmation
-d2_denoise_norm = norm_data(filter_wavelet(data2['d'][0]))
-plot_sample_with_binary(d2_denoise_norm[-200000:], d2_denoise_norm[-200000:])
+# inf data on d2 to visualise
+data2_norm = norm_data(data2['d'][0])
+X_i, index_map_i = prep_set_inf(data2['d'][0])
+dataset_i = TensorDataset(X_i)
+loader_i = DataLoader(dataset_i, batch_size=64, shuffle=False)
 
 # load model and evaluate performance
 model = SpikeNet().to(device)
 model.load_state_dict(torch.load(
-    "src/nn/ind_mdl/models/D2/20251110_neuron_event_det_cnn_D2_D4.pt"))
+    "src/nn/ind_mdl/models/D2/20251111_neuron_event_det_cnn_window_norm_d2.pt"))
 model.eval()
 
-with torch.no_grad():
-    X_sample = X_sample.unsqueeze(0)
-    X_sample = X_sample.permute(0, 2, 1)
-    outputs = model(X_sample.to(device))
-    preds = nonmax_rejection(outputs.squeeze().tolist(), 0.7)
-    print(len([x for x in preds if x != 0]))
+# Do forward pass on the _val data using the index map to
+# reconstruct the predictions
+all_outputs = []
+with torch.no_grad():  # disables gradient computation (saves memory)
+    for X_batch, _ in loader_v:
+        X_batch = X_batch.to(device)
+        output = model(X_batch)  # shape: (batch_size, 1, window_size) or (batch_size, window_size)
+        output = output.squeeze(1).cpu().numpy()  # shape: (batch_size, window_size)
+        all_outputs.append(output)
 
+# Stack all batches back together
+outputs_v = np.concatenate(all_outputs, axis=0)  # (num_windows, window_size)
+# construct our outputs list
+n_total = len(raw_data_val)
+final_probs = np.zeros(n_total)
+counts = np.zeros(n_total)
 
-#plot_sample_with_binary(raw_data_test[-11000:-9000], preds.squeeze().tolist()[-11000:-9000])
+for i in range(outputs_v.shape[0]):
+    final_probs[index_map_v[i]] += outputs_v[i]
+    counts[index_map_v[i]] += 1
 
-pred_count = 0
-X_sample = torch.tensor(d2_denoise_norm, dtype=torch.float32).unsqueeze(1)
-X_sample = X_sample.unsqueeze(0)
-X_sample = X_sample.permute(0, 2, 1)
-outputs = model(X_sample.to(device))
-preds = nonmax_rejection(outputs.squeeze().tolist(), 0.7)
+# Average overlapping predictions
+final_probs /= np.maximum(counts, 1)
+preds = nonmax_rejection(final_probs, 0.7)
 print(len([x for x in preds if x != 0]))
-plot_sample_with_binary(data2['d'][0][-12000:], preds[-12000:])
-plot_sample_with_binary(d2_denoise_norm[-12000:], preds[-12000:])
-#plot_sample_with_binary(raw_data_60[-20000:-10000], labels_bin[-20000:-10000])
+plot_sample_with_binary(raw_data_val[-11000:], preds[-11000:])
+
+metrics = tolerant_binary_metrics(preds, idx_bin_val, tol=50)
+print(f"Accuracy:  {metrics['accuracy']:.3f}")
+print(f"Precision: {metrics['precision']:.3f}")
+print(f"Recall:    {metrics['recall']:.3f}")
+print(f"F1:        {metrics['f1']:.3f}")
+print(f"TP: {metrics['TP']}, FP: {metrics['FP']}, FN: {metrics['FN']}")
+print(f"Zero agreement: {metrics['zero_agreement']:.3f}")
+
+
+# Do forward pass on the _inf data using the index map to
+# reconstruct the predictions
+all_outputs = []
+with torch.no_grad():  # disables gradient computation (saves memory)
+    for X_batch, in loader_i:
+        X_batch = X_batch.to(device)
+        output = model(X_batch)  # shape: (batch_size, 1, window_size) or (batch_size, window_size)
+        output = output.squeeze(1).cpu().numpy()  # shape: (batch_size, window_size)
+        all_outputs.append(output)
+
+# Stack all batches back together
+outputs_i = np.concatenate(all_outputs, axis=0)  # (num_windows, window_size)
+# construct our outputs list
+n_total = len(data2_norm)
+final_probs = np.zeros(n_total)
+counts = np.zeros(n_total)
+
+for i in range(outputs_i.shape[0]):
+    final_probs[index_map_i[i]] += outputs_i[i]
+    counts[index_map_i[i]] += 1
+
+# Average overlapping predictions
+final_probs /= np.maximum(counts, 1)
+preds = nonmax_rejection(final_probs, 0.7)
+print(len([x for x in preds if x != 0]))
+plot_sample_with_binary(data2_norm[-11000:], preds[-11000:])
 print()
