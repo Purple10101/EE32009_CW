@@ -4,7 +4,7 @@
  Title:        seq_cnn_cnn.py
  Description:
  Author:       Joshua Poole
- Created on:   20251103
+ Created on:   20251111
  Version:      1.0
 ===========================================================
 
@@ -24,20 +24,24 @@ import os
 import copy
 import numpy as np
 import matplotlib.pyplot as plt
-from scipy.signal import find_peaks
-import random
+from pathlib import Path
+
 import torch
-from torch.utils.data import TensorDataset
 from torch.utils.data import TensorDataset, DataLoader
 
-from src.nn.cnn_cls.n_cls import NeuronCNN
-from src.nn.cnn_evnt_det.n_evnt_det import SpikeNet
+from src.nn.ind_mdl.cnn_cls.n_cls import NeuronCNN
+from src.nn.ind_mdl.cnn_evnt_det.n_evnt_det import SpikeNet
+import src.nn.ind_mdl.cnn_evnt_det.n_evnt_det_utils_nn as evnt_det_utils
 
-import src.nn.cnn_evnt_det.n_evnt_det_utils as evnt_det_utils
-
-os.chdir(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.getcwd())))))
+dir_name = "EE32009_CW"
+p = Path.cwd()
+while p.name != dir_name:
+    if p.parent == p:
+        raise FileNotFoundError(f"Directory '{dir_name}' not found above {Path.cwd()}")
+    p = p.parent
+os.chdir(p)
 print(os.getcwd())
-
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 class RecordingInf:
 
@@ -45,14 +49,14 @@ class RecordingInf:
 
         self.dataset_id = dataset_id
         # load in models
-        self.model_evnt_det = SpikeNet()
+        self.model_evnt_det = SpikeNet().to(device)
         self.model_evnt_det.load_state_dict(torch.load(
-            "src/nn/models/20251104_neuron_event_det_cnn_dilation_mimic_noise.pt"))
+            "src/nn/ind_mdl/models/D2/20251111_neuron_event_det_cnn_window_norm_d2.pt"))
         self.model_evnt_det.eval()
 
         self.model_cls = NeuronCNN(5)
         self.model_cls.load_state_dict(torch.load(
-            "src/nn/models/20251104_neuron_total_norm_mimic_noise.pt"))
+            "src/nn/ind_mdl/models/D2/20251104_neuron_total_norm_mimic_noise.pt"))
         self.model_cls.eval()
 
         # data prep
@@ -60,7 +64,7 @@ class RecordingInf:
         self.data_norm = self.norm_data()
 
         # do forward pass of model_evnt_det with raw_data
-        self.index_lst, self.index_bin = self.event_det_inf(0.68)
+        self.index_lst, self.index_bin = self.event_det_inf(0.7)
         plot_sample_with_binary(self.raw_data[:1000], self.index_bin[:1000])
         # do forward pass of model_cls with data_norm with respect to index_lst
         self.cls_lst = self.cls_inf()
@@ -79,16 +83,6 @@ class RecordingInf:
         ret_val = (2 * (ret_val - raw_data_min) /
             (raw_data_max - raw_data_min) - 1)
         return ret_val
-
-    def prep_event_det_inf(self, data, window_size=200):
-        """
-        This version is for preparing the inference tensors and will not slide!
-        """
-        X = []
-        for i in range(0, len(data) - window_size + 1, window_size):
-            X.append(data[i:i + window_size])
-        X = torch.tensor(X, dtype=torch.float32).unsqueeze(1)  # (N, 1, window_size)
-        return X
 
     def split_spike(self, capture_width=80, capture_weight=0.90):
         """
@@ -123,15 +117,35 @@ class RecordingInf:
 
     def event_det_inf(self, threshold):
 
-        self.model_evnt_det.eval()
-        with torch.no_grad():
-            X_sample = torch.tensor(self.data_norm, dtype=torch.float32).unsqueeze(1)
-            X_sample = X_sample.unsqueeze(0)
-            X_sample = X_sample.permute(0, 2, 1)
-            outputs = self.model_evnt_det(X_sample)
-            preds = evnt_det_utils.nonmax_rejection(outputs.squeeze().tolist(), 0.65)
+        X_i, index_map_i = evnt_det_utils.prep_set_inf(self.data_norm)
+        dataset_i = TensorDataset(X_i)
+        loader_i = DataLoader(dataset_i, batch_size=64, shuffle=False)
 
-        output_indexes = np.where(preds > threshold)[0]
+        self.model_evnt_det.eval()
+        all_outputs = []
+        with torch.no_grad():
+            for X_batch, in loader_i:
+                X_batch = X_batch.to(device)
+                output = self.model_evnt_det(X_batch)  # shape: (batch_size, 1, window_size) or (batch_size, window_size)
+                output = output.squeeze(1).cpu().numpy()  # shape: (batch_size, window_size)
+                all_outputs.append(output)
+
+        # Stack all batches back together
+        outputs_i = np.concatenate(all_outputs, axis=0)  # (num_windows, window_size)
+        # construct our outputs list
+        n_total = len(self.data_norm)
+        final_probs = np.zeros(n_total)
+        counts = np.zeros(n_total)
+
+        for i in range(outputs_i.shape[0]):
+            final_probs[index_map_i[i]] += outputs_i[i]
+            counts[index_map_i[i]] += 1
+
+        # Average overlapping predictions
+        final_probs /= np.maximum(counts, 1)
+        preds = evnt_det_utils.nonmax_rejection(final_probs, 0.7)
+
+        output_indexes = np.where(preds == 1)[0]
         return output_indexes, preds
 
     def cls_inf(self):
@@ -153,12 +167,12 @@ class RecordingInf:
             "Index": self.index_lst,
             "Class" : self.cls_lst
         }
-        savemat(f"src/nn/seq/20251103_cnn_cnn_seq/outputs/vis/{self.dataset_id}_vis.mat", export_data)
+        savemat(f"src/nn/ind_mdl/seq/20251111_cnn_cnn_seq/outputs/vis/{self.dataset_id}_vis.mat", export_data)
         export_data_sub = {
             "Index": self.index_lst,
             "Class" : self.cls_lst
         }
-        savemat(f"src/nn/seq/20251103_cnn_cnn_seq/outputs/sub/{self.dataset_id}.mat", export_data_sub)
+        savemat(f"src/nn/ind_mdl/seq/20251111_cnn_cnn_seq/outputs/sub/{self.dataset_id}.mat", export_data_sub)
 
 
 def plot_sample_with_binary(sample, binary_signal):
