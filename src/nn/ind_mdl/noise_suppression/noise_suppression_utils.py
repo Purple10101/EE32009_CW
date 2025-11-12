@@ -21,6 +21,7 @@
 from scipy.io import loadmat
 from pathlib import Path
 import os
+import pickle
 
 dir_name = "EE32009_CW"
 p = Path.cwd()
@@ -30,13 +31,6 @@ while p.name != dir_name:
     p = p.parent
 os.chdir(p)
 print(os.getcwd())
-
-data1 = loadmat('data\D1.mat')
-data2 = loadmat('data\D2.mat')
-data3 = loadmat('data\D3.mat')
-data4 = loadmat('data\D4.mat')
-data5 = loadmat('data\D5.mat')
-data6 = loadmat('data\D6.mat')
 
 #### for research lets analyse D1 and try to pick out the freq components that cause the transients (spikes) ####
 def d1_noise_analysis():
@@ -103,8 +97,44 @@ import matplotlib.pyplot as plt
 import plotly.graph_objects as go
 
 
-# create spike_template
-# maybe use this template to do detection?
+def degrade(raw_data, mimic_sig, noise_scale=1):
+    """
+    noise turning for different levels:
+    60dB - noise_scale=0.25
+    40dB - noise_scale=0.4
+    20dB - noise_scale=0.6
+    0dB - noise_scale=0.8
+    sub 0dB - noise_scale=1
+    """
+    from scipy.ndimage import uniform_filter1d
+    # Extract noise reference (zero-mean)
+    noise_ref = mimic_sig - np.mean(mimic_sig)
+
+    # Compute reference noise spectrum magnitude
+    fft_noise = np.fft.rfft(noise_ref)
+    mag_noise = np.abs(fft_noise)
+    mag_noise_smooth = uniform_filter1d(mag_noise, size=15)
+
+    # Generate random-phase noise with same spectral shape
+    phase = np.exp(1j * 2 * np.pi * np.random.rand(len(mag_noise)))
+    colored_noise = np.fft.irfft(mag_noise_smooth * phase)
+    colored_noise -= np.mean(colored_noise)
+    # Emphasize high frequencies to tighten noise around zero
+    freqs = np.fft.rfftfreq(len(noise_ref))
+    tilt = (freqs / freqs.max()) ** 0.5  # boost toward high freq
+    mag_shaped = mag_noise_smooth * tilt
+    colored_noise = np.fft.irfft(mag_shaped * phase)
+
+    # Scale noise strength
+    target_rms = np.std(mimic_sig)
+    current_rms = np.std(colored_noise)
+    colored_noise *= (target_rms / (current_rms + 1e-12)) * noise_scale
+
+    # Inject noise into clean signal
+    noisy_out = raw_data + colored_noise
+
+    return noisy_out
+
 def make_spike_template(x, spike_indices, fs, window_ms=2.0):
     """
     Compute average spike waveform template from known spike indices.
@@ -259,16 +289,179 @@ def plt_plotter_time_series(signal, binary_signal):
     plt.show(block=False)
 
 #spike_template = make_spike_template(np.array(data1['d'][0]), np.array(data1['Index'][0]), 25000)
-noisy_trace = data3['d'][0]
+"""noisy_trace = data3['d'][0]
 
 wv_filtered_d3 = filter_wavelet(noisy_trace)
 plotting_sample_wv_filtered_d3 = wv_filtered_d3[-200_000:]
 x = np.arange(len(plotting_sample_wv_filtered_d3))
 
 plt_plotter_time_series(plotting_sample_wv_filtered_d3, plotting_sample_wv_filtered_d3)
-plt_plotter_time_series(data3['d'][0][-200_000:], data3['d'][0][-200_000:])
+plt_plotter_time_series(data3['d'][0][-200_000:], data3['d'][0][-200_000:])"""
+
+# Im interested in the frequency components of windows that contain a spike
+# I might be able to do spike detection in the freq domain?
+
+def plot_widow(window):
+    x = np.arange(len(window))
+    plt.figure(figsize=(8, 4))
+    plt.plot(x, window)
+    plt.xlabel("idx")
+    plt.ylabel("Amplitude")
+    plt.title("Raw plot of window")
+    plt.grid(True)
+    plt.tight_layout()
+    plt.show(block=False)
+
+def plot_widow_spect(freqs, power):
+    plt.figure(figsize=(8, 4))
+    plt.plot(freqs, power)
+    plt.xlabel("Frequency (Hz)")
+    plt.ylabel("Power")
+    plt.title("Power Spectrum of Neuron Activity (One Window)")
+    plt.grid(True)
+    plt.tight_layout()
+    plt.show(block=False)
+
+def plot_window_with_spectrum(window, spect):
+
+    freqs, power = spect
+    fig, axes = plt.subplots(2, 1, figsize=(8, 6))
+
+    # --- Time-domain plot ---
+    x = np.arange(len(window))
+    axes[0].plot(x, window)
+    axes[0].set_xlabel("Sample index")
+    axes[0].set_ylabel("Amplitude")
+    axes[0].set_title("Raw Window")
+    axes[0].grid(True)
+
+    # --- Frequency-domain plot ---
+    axes[1].plot(freqs, power)
+    axes[1].set_xlabel("Frequency (Hz)")
+    axes[1].set_ylabel("Power")
+    axes[1].set_title("Power Spectrum")
+    axes[1].grid(True)
+
+    plt.tight_layout()
+    plt.show(block=False)
+
+def prep_unknown_windows(data, window_size=128, stride=32):
+    X = []
+    for i in range(0, len(data) - window_size, stride):
+        X.append(data[i:i + window_size])
+    return X
+
+def split_spikes(data, idx):
+    data, idx = np.array(data), np.array(idx)
+
+    half_win = int(50)
+    snippets = []
+    for i in idx:
+        if i - half_win < 0 or i + half_win >= len(data):
+            continue
+        seg = data[i - half_win: i + half_win]
+        snippets.append(seg)
+    return np.array(snippets)
+
+def window_spectral_power(window, fs=25000, plot=None):
+    freqs, power = welch(window, fs=fs, nperseg=len(window))
+    if plot is not None:
+        plt.figure(figsize=(8, 4))
+        plt.plot(freqs, power)
+        plt.xlabel("Frequency (Hz)")
+        plt.ylabel("Power")
+        plt.title("Power Spectrum of Neuron Activity (One Window)")
+        plt.grid(True)
+        plt.tight_layout()
+        plt.show(block=False)
+    return [freqs, power]
+
+def collect_dataset_info(dataset):
+    windows = prep_unknown_windows(dataset)
+    windows_info = []
+    for window in windows:
+        windows_info.append(
+            {
+                "Data": window,
+                "Spectral Power": window_spectral_power(window),
+            }
+        )
+    return windows_info
 
 
+data1 = loadmat('data\D1.mat')
+data2 = loadmat('data\D2.mat')
+data3 = loadmat('data\D3.mat')
+data4 = loadmat('data\D4.mat')
+data5 = loadmat('data\D5.mat')
+data6 = loadmat('data\D6.mat')
+
+# raw datasets
+data_80 = data1['d'][0]
+data_60 = degrade(data1['d'][0], data2['d'][0],0.25)
+data_40 = degrade(data1['d'][0], data3['d'][0], 0.4)
+data_20 = degrade(data1['d'][0], data4['d'][0], 0.6)
+data_0 = degrade(data1['d'][0], data5['d'][0], 0.8)
+data_sub0 = degrade(data1['d'][0], data6['d'][0], 1)
+
+
+d1_data = data1['d'][0]
+d1_idx = data1['Index'][0]
+
+spikes = split_spikes(d1_data, d1_idx)
+spikes_info = []
+
+for spike in spikes:
+    window_spectral_power(spike)
+    spikes_info.append(
+        {
+            "Data": spike,
+            "Spectral Power": window_spectral_power(spike),
+        }
+    )
+
+# now lets do the same but a windowed approach to the unknow datasets
+reprocess = 0
+degraded_or_unknow = "degraded"
+
+try:
+    if reprocess == 1:
+        raise FileNotFoundError
+    with (open(f"src/nn/ind_mdl/noise_suppression/python_vars/processed_{degraded_or_unknow}_datasets_spect.pkl", "rb")
+          as f):
+        processed_datasets = pickle.load(f)
+except FileNotFoundError:
+    if degraded_or_unknow == "degraded":
+        unknow_datasets = [data_60, data_40, data_20, data_0, data_sub0]
+    else:
+        unknow_datasets = [data2['d'][0], data3['d'][0], data4['d'][0], data5['d'][0], data6['d'][0]]
+    processed_datasets = []
+    for dataset in unknow_datasets:
+        processed_datasets.append(collect_dataset_info(dataset))
+
+    with (open(f"src/nn/ind_mdl/noise_suppression/python_vars/processed_{degraded_or_unknow}_datasets_spect.pkl", "wb")
+          as f):
+        pickle.dump(processed_datasets, f)
+
+for dataset_info in processed_datasets[-2:]:
+    significant_windows = []
+    random_indices = np.random.randint(0, len(dataset_info), size=100)
+    random_windows = [dataset_info[i] for i in random_indices]
+    for window in random_windows:
+        freqs, power = window["Spectral Power"]
+        max_power = np.max(power)
+        if max_power == 0:
+            continue
+
+        # Power below 2 kHz
+        below_mask = freqs < 2000
+        below_power = power[below_mask]
+
+        # Check if any low-frequency component is "significant"
+        if np.any(below_power >= 0.1 * max_power):
+            significant_windows.append(window)
+            plot_window_with_spectrum(window["Data"], window["Spectral Power"])
+            print()
 
 print()
 
