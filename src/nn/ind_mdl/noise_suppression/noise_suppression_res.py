@@ -93,13 +93,13 @@ def plt_plotter_time_series(signal, binary_signal):
     plt.tight_layout()
     plt.show(block=False)
 
-def plot_widow(window):
+def plot_widow(window, name="Raw plot of window"):
     x = np.arange(len(window))
     plt.figure(figsize=(8, 4))
     plt.plot(x, window)
     plt.xlabel("idx")
     plt.ylabel("Amplitude")
-    plt.title("Raw plot of window")
+    plt.title(name)
     plt.grid(True)
     plt.tight_layout()
     plt.show(block=False)
@@ -113,6 +113,27 @@ def plot_widow_spect(freqs, power):
     plt.grid(True)
     plt.tight_layout()
     plt.show(block=False)
+
+def plot_spect_comparason(ref, unknown, ref_map, fs=25000):
+    f_ref, Pxx_ref = welch(ref, fs=fs, nperseg=2048)
+    f_unknown, Pxx_unknown = welch(unknown, fs=fs, nperseg=2048)
+    f_ref_map, Pxx_ref_map = welch(ref_map, fs=fs, nperseg=2048)
+
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(x=f_ref, y=Pxx_ref, mode='lines', name='ref', line=dict(color='green')))
+    fig.add_trace(go.Scatter(x=f_unknown, y=Pxx_unknown, mode='lines', name='unknown', line=dict(color='gold')))
+    fig.add_trace(go.Scatter(x=f_ref_map, y=Pxx_ref_map, mode='lines', name='ref remapped',
+                             line=dict(color='gray')))
+    fig.update_layout(
+        title="Power Spectral Density Comparison",
+        xaxis_title="Frequency (Hz)",
+        xaxis_range=[0, 12_000],
+        yaxis_title="Power",
+        yaxis_type="log",
+        template="plotly_white",
+        width=900, height=400
+    )
+    fig.show()
 
 def plot_window_with_spectrum(window, spect):
 
@@ -178,60 +199,81 @@ def degrade(raw_data, mimic_sig, noise_scale=1):
 def spectral_power_suppress(noisy, clean, fs, nperseg=2048):
     """
     Suppress the power of noisy signal to match that of clean signal across frequency bands.
-
-    Parameters
-    ----------
-    noisy : array_like
-        The noisy (0 dB SNR) signal.
-    clean : array_like
-        The clean (80 dB SNR) signal.
-    fs : float
-        Sampling frequency in Hz.
-    nperseg : int, optional
-        FFT window length for Welch PSD estimate.
-
-    Returns
-    -------
-    denoised : ndarray
-        The noisy signal with frequency power suppressed to match the clean signal.
-    G : ndarray
-        The frequency-dependent gain curve applied.
-    f : ndarray
-        The frequency axis corresponding to G.
     """
     from scipy import signal
-    # --- 1) Estimate PSDs ---
+    # Estimate PSDs
     f, P_noisy = signal.welch(noisy, fs=fs, nperseg=nperseg)
     _, P_clean = signal.welch(clean, fs=fs, nperseg=nperseg)
-
-    # --- 2) Compute gain curve (avoid division by zero) ---
+    # Compute gain curve (avoid division by zero)
     eps = 1e-12
     G = np.sqrt((P_clean + eps) / (P_noisy + eps))
-
     # Smooth the gain a little to avoid spectral artifacts
     G = signal.savgol_filter(G, 31, 3)  # 31-pt window, cubic poly
-
-    # --- 3) Apply gain curve in frequency domain ---
+    # Apply gain curve in frequency domain
     # FFT of the noisy signal
     N = len(noisy)
     freqs = np.fft.rfftfreq(N, 1/fs)
     X = np.fft.rfft(noisy)
-
     # Interpolate gain to FFT bins
     G_interp = np.interp(freqs, f, G, left=G[0], right=G[-1])
-
     # Apply soft suppression
     X_suppressed = X * G_interp
-
     # Back to time domain
     denoised = np.fft.irfft(X_suppressed, n=N)
-
     # remove the low freq sway
     b, a = signal.butter(4, 3 / (fs / 2), btype='highpass')
     filtered = signal.filtfilt(b, a, denoised)
 
     return filtered
 
+def spectral_power_degrade(clean, noisy, fs, nperseg=2048):
+    """
+    Apply spectral power shaping to make a clean signal sound like the noisy one.
+
+    This does not add the low freq sway. to get around that you're gonna have to
+    take local normalisation windows during both pk detection and classification.
+    """
+    from scipy import signal
+
+    # Estimate PSDs
+    f, P_clean = signal.welch(clean, fs=fs, nperseg=nperseg)
+    _, P_noisy = signal.welch(noisy, fs=fs, nperseg=nperseg)
+    # Compute *degradation* gain curve
+    eps = 1e-12
+    G = np.sqrt((P_noisy + eps) / (P_clean + eps))
+    # Smooth the gain curve
+    G = signal.savgol_filter(G, 31, 3)
+    # Apply gain to clean signal
+    N = len(clean)
+    freqs = np.fft.rfftfreq(N, 1 / fs)
+    X = np.fft.rfft(clean)
+    # Interpolate gain
+    G_interp = np.interp(freqs, f, G, left=G[0], right=G[-1])
+    # Apply gain
+    X_degraded = X * G_interp
+    degraded = np.fft.irfft(X_degraded, n=N)
+
+    return degraded
+
+def filter_wavelet(signal, fs=25000):
+    import pywt
+    # High-pass filter to remove slow drift
+    # This is only present in the final two datasets I think
+    nyq = 0.5 * fs
+    b, a = butter(3,   10 / nyq, btype='high')
+    signal_hp = filtfilt(b, a, signal)
+
+    # Wavelet denoising
+    wavelet = 'db4'
+    coeffs = pywt.wavedec(signal_hp, wavelet, level=5)
+
+    sigma = np.median(np.abs(coeffs[-1])) / 0.6745
+    uthresh = 0.7 * sigma * np.sqrt(2 * np.log(len(signal_hp))) # tuned 0.7 try other else
+
+    coeffs_thresh = [pywt.threshold(c, value=uthresh, mode='soft') for c in coeffs]
+    clean_wavelet = pywt.waverec(coeffs_thresh, wavelet)
+
+    return clean_wavelet
 
 data1 = loadmat('data\D1.mat')
 data2 = loadmat('data\D2.mat')
@@ -248,30 +290,135 @@ data_20 = degrade(data1['d'][0], data4['d'][0], 0.6)
 data_0 = degrade(data1['d'][0], data5['d'][0], 0.8)
 data_sub0 = degrade(data1['d'][0], data6['d'][0], 1)
 
+supressed_d2 = spectral_power_suppress(data2['d'][0], data1['d'][0], 25000)
+supressed_d3 = spectral_power_suppress(data3['d'][0], data1['d'][0], 25000)
+supressed_d4 = spectral_power_suppress(data4['d'][0], data1['d'][0], 25000)
 supressed_d5 = spectral_power_suppress(data5['d'][0], data1['d'][0], 25000)
+supressed_d6 = spectral_power_suppress(data6['d'][0], data1['d'][0], 25000)
 
-go_plot_time_series(supressed_d5[-1_000_000:-800_000])
+degraded_d1_d2 = spectral_power_degrade(data1['d'][0], data2['d'][0], 25000)
+degraded_d1_d3 = spectral_power_degrade(data1['d'][0], data3['d'][0], 25000)
+degraded_d1_d4 = spectral_power_degrade(data1['d'][0], data4['d'][0], 25000)
+degraded_d1_d5 = spectral_power_degrade(data1['d'][0], data5['d'][0], 25000)
+degraded_d1_d6 = spectral_power_degrade(data1['d'][0], data6['d'][0], 25000)
 
-fs = 25_000
-f_clean, Pxx_clean = welch(data1['d'][0], fs=fs, nperseg=2048)
-f_noisy_0, Pxx_noisy_0 = welch(data5['d'][0], fs=fs, nperseg=2048)
-f_noisy_processed_0, Pxx_processed_0 = welch(supressed_d5, fs=fs, nperseg=2048)
+wavlet_supressed_d2 = filter_wavelet(supressed_d2)
+wavlet_supressed_d3 = filter_wavelet(supressed_d3)
+wavlet_supressed_d4 = filter_wavelet(supressed_d4)
+wavlet_supressed_d5 = filter_wavelet(supressed_d5)
+wavlet_supressed_d6 = filter_wavelet(supressed_d6)
 
-fig = go.Figure()
-fig.add_trace(go.Scatter(x=f_clean, y=Pxx_clean, mode='lines', name='D1 (80 dB)', line=dict(color='green')))
-fig.add_trace(go.Scatter(x=f_noisy_0, y=Pxx_noisy_0, mode='lines', name='D5 (0 dB)', line=dict(color='gold')))
-fig.add_trace(go.Scatter(x=f_noisy_processed_0, y=Pxx_processed_0, mode='lines', name='D5 processed', line=dict(color='gray')))
-fig.update_layout(
-    title="Power Spectral Density Comparison",
-    xaxis_title="Frequency (Hz)",
-    xaxis_range=[0, 12_000],
-    yaxis_title="Power",
-    yaxis_type="log",
-    template="plotly_white",
-    width=900, height=400
-)
-fig.show()
+wavlet_supressed_degraded_d1_d2 = filter_wavelet(degraded_d1_d2)
+wavlet_supressed_degraded_d1_d3 = filter_wavelet(degraded_d1_d3)
+wavlet_supressed_degraded_d1_d4 = filter_wavelet(degraded_d1_d4)
+wavlet_supressed_degraded_d1_d5 = filter_wavelet(degraded_d1_d5)
+wavlet_supressed_degraded_d1_d6 = filter_wavelet(degraded_d1_d6)
+
+#go_plot_time_series(supressed_d5[-1_000_000:-950_000])
+#go_plot_time_series(data_80[-1_000_000:-950_000])
+
+#plot_widow(data_80[-1_000_000:-950_000])
+#plot_widow(wavlet_supressed_d2[-1_000_000:-950_000])
+#plot_widow(wavlet_supressed_d3[-1_000_000:-950_000])
+#plot_widow(wavlet_supressed_d4[-1_000_000:-950_000])
+#plot_widow(wavlet_supressed_d5[-1_000_000:-950_000])
+#plot_widow(wavlet_supressed_d6[-1_000_000:-950_000])
+
+plot_widow(degraded_d1_d2, name="d1 degraded to mimic d2")
+plot_widow(data_80, name="d1")
+plot_widow(data2['d'][0], name="d2")
+plot_widow(wavlet_supressed_degraded_d1_d2, name="wavelet suppressed degraded d1")
+plot_widow(wavlet_supressed_d2, name="wavelet suppressed d2")
+plot_spect_comparason(data_80, data2['d'][0], degraded_d1_d2)
 
 print()
+
+# now lets do the same but a windowed approach to the unknow datasets
+reprocess = 0
+degraded_or_unknow = "degraded"
+
+def prep_unknown_windows(data, window_size=128, stride=32):
+    X = []
+    for i in range(0, len(data) - window_size, stride):
+        X.append(data[i:i + window_size])
+    return X
+
+def split_spikes(data, idx):
+    data, idx = np.array(data), np.array(idx)
+
+    half_win = int(50)
+    snippets = []
+    for i in idx:
+        if i - half_win < 0 or i + half_win >= len(data):
+            continue
+        seg = data[i - half_win: i + half_win]
+        snippets.append(seg)
+    return np.array(snippets)
+
+def window_spectral_power(window, fs=25000, plot=None):
+    freqs, power = welch(window, fs=fs, nperseg=len(window))
+    if plot is not None:
+        plt.figure(figsize=(8, 4))
+        plt.plot(freqs, power)
+        plt.xlabel("Frequency (Hz)")
+        plt.ylabel("Power")
+        plt.title("Power Spectrum of Neuron Activity (One Window)")
+        plt.grid(True)
+        plt.tight_layout()
+        plt.show(block=False)
+    return [freqs, power]
+
+def collect_dataset_info(dataset):
+    windows = prep_unknown_windows(dataset)
+    windows_info = []
+    for window in windows:
+        windows_info.append(
+            {
+                "Data": window,
+                "Spectral Power": window_spectral_power(window),
+            }
+        )
+    return windows_info
+
+
+
+try:
+    if reprocess == 1:
+        raise FileNotFoundError
+    with (open(f"src/nn/ind_mdl/noise_suppression/python_vars/processed_{degraded_or_unknow}_datasets_spect.pkl", "rb")
+          as f):
+        processed_datasets = pickle.load(f)
+except FileNotFoundError:
+    if degraded_or_unknow == "degraded":
+        unknow_datasets = [data_60, data_40, data_20, data_0, data_sub0]
+    else:
+        unknow_datasets = [data2['d'][0], data3['d'][0], data4['d'][0], data5['d'][0], data6['d'][0]]
+    processed_datasets = []
+    for dataset in unknow_datasets:
+        processed_datasets.append(collect_dataset_info(dataset))
+
+    with (open(f"src/nn/ind_mdl/noise_suppression/python_vars/processed_{degraded_or_unknow}_datasets_spect.pkl", "wb")
+          as f):
+        pickle.dump(processed_datasets, f)
+
+for dataset_info in processed_datasets[-2:]:
+    significant_windows = []
+    random_indices = np.random.randint(0, len(dataset_info), size=100)
+    random_windows = [dataset_info[i] for i in random_indices]
+    for window in random_windows:
+        freqs, power = window["Spectral Power"]
+        max_power = np.max(power)
+        if max_power == 0:
+            continue
+
+        # Power below 2 kHz
+        below_mask = freqs < 2000
+        below_power = power[below_mask]
+
+        # Check if any low-frequency component is "significant"
+        if np.any(below_power >= 0.1 * max_power):
+            significant_windows.append(window)
+            plot_window_with_spectrum(window["Data"], window["Spectral Power"])
+            print()
 
 
