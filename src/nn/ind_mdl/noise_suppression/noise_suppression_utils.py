@@ -275,7 +275,9 @@ def filter_wavelet(signal, fs=25000):
 
     coeffs_thresh = [pywt.threshold(c, value=uthresh, mode='soft') for c in coeffs]
     clean_wavelet = pywt.waverec(coeffs_thresh, wavelet)
-
+    # Add tiny noise to prevent zero-flat NaNs later
+    eps = 1e-4 * np.random.randn(len(clean_wavelet))
+    clean_wavelet = clean_wavelet + eps
     return clean_wavelet
 
 
