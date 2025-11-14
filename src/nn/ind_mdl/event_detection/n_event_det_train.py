@@ -60,10 +60,10 @@ split_index = int(len(data1['d'][0]) * 0.8)
 
 data1_train = data1['d'][0][:split_index]
 # we need d2 to be the same size so unfortunately we lose some resolution
-data2_train = data2['d'][0][:split_index]
+data_unknown_train = data6['d'][0][:split_index]
 idx_train = idx_bin[:split_index]
 
-training_set = TrainingData(data1_train, data2_train, idx_train)
+training_set = TrainingData(data1_train, data_unknown_train, idx_train)
 
 plot_sample_with_binary(training_set.wavelet_degraded_80dB_data, training_set.wavelet_degraded_80dB_data)
 
@@ -142,7 +142,7 @@ print()
 ########################################################################################################################
 
 torch.save(model.state_dict(),
-           "src/nn/ind_mdl/event_detection/models/D2/20251113_neuron_event_det_cnn.pt")
+           "src/nn/ind_mdl/event_detection/models/D6/20251114_neuron_event_det_cnn.pt")
 
 print()
 

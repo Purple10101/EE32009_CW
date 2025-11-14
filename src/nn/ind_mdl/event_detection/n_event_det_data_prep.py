@@ -110,7 +110,7 @@ class InferenceData:
         # signal processing for the neuron data
         self.wavelet_degraded_80dB_data = filter_wavelet(raw_unknown_data)
 
-        X_tensors, self.index_map = self.prep_set_inf(self.wavelet_degraded_80dB_data)
+        X_tensors, self.index_map = self.prep_set_inf(raw_unknown_data)
         self.dataset_i = TensorDataset(X_tensors)
         self.loader_i = DataLoader(self.dataset_i, batch_size=64, shuffle=False)
 

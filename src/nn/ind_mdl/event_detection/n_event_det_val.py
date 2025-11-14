@@ -54,12 +54,18 @@ split_index = int(len(data1['d'][0]) * 0.8)
 
 data1_val = data1['d'][0][split_index:]
 # we need d2 to be the same size so unfortunately we lose some resolution
-data2_val = data2['d'][0][split_index:]
+data_unknown_val = data6['d'][0][split_index:]
 idx_train = idx_bin[split_index:]
 
-val_set = ValidationData(data1_val, data2_val, idx_train)
+val_set = ValidationData(data1_val, data_unknown_val, idx_train)
 
 plot_sample_with_binary(val_set.wavelet_degraded_80dB_data, val_set.wavelet_degraded_80dB_data)
+
+# now prep the d2 set for total inference.
+
+data_inf = data6['d'][0]
+
+inf_set = InferenceData(data_inf)
 
 print()
 ########################################################################################################################
@@ -68,7 +74,7 @@ print()
 
 model = SpikeNet().to(device)
 model.load_state_dict(torch.load(
-    "src/nn/ind_mdl/event_detection/models/D2/20251113_neuron_event_det_cnn.pt"))
+    "src/nn/ind_mdl/event_detection/models/D6/20251114_neuron_event_det_cnn.pt"))
 model.eval()
 
 print()
@@ -110,5 +116,46 @@ print(f"Recall:    {metrics['recall']:.3f}")
 print(f"F1:        {metrics['f1']:.3f}")
 print(f"TP: {metrics['TP']}, FP: {metrics['FP']}, FN: {metrics['FN']}")
 print(f"Zero agreement: {metrics['zero_agreement']:.3f}")
+
+"""
+threshold at 0.9 compared to 0.7 at training
+Accuracy:  0.999
+Precision: 0.998
+Recall:    1.000
+F1:        0.999
+TP: 409, FP: 1, FN: 0
+"""
+
+print()
+########################################################################################################################
+# INFERENCE FORWARD PASS #
+########################################################################################################################
+
+# Do forward pass on the _inf data using the index map to
+# reconstruct the predictions
+all_outputs = []
+with torch.no_grad():  # disables gradient computation (saves memory)
+    for X_batch, in inf_set.loader_i:
+        X_batch = X_batch.to(device)
+        output = model(X_batch)  # shape: (batch_size, 1, window_size) or (batch_size, window_size)
+        output = output.squeeze(1).cpu().numpy()  # shape: (batch_size, window_size)
+        all_outputs.append(output)
+
+# Stack all batches back together
+outputs_i = np.concatenate(all_outputs, axis=0)  # (num_windows, window_size)
+# construct our outputs list
+n_total = len(data_inf)
+final_probs = np.zeros(n_total)
+counts = np.zeros(n_total)
+
+for i in range(outputs_i.shape[0]):
+    final_probs[inf_set.index_map[i]] += outputs_i[i]
+    counts[inf_set.index_map[i]] += 1
+
+# Average overlapping predictions
+final_probs /= np.maximum(counts, 1)
+preds = nonmax_rejection(final_probs, 0.9)
+print(len([x for x in preds if x != 0]))
+plot_sample_with_binary(data_inf[-11000:], preds[-11000:])
 
 print()
