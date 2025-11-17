@@ -100,6 +100,67 @@ class TrainingData:
         return loader
 
 
+class InferenceDataCls:
+    def __init__(self, raw_unknown_data, idx_list):
+
+        # Two channels, one is recoding-wise norm oen is window-wise norm.
+
+        self.idx_list = idx_list
+        # prep data loader
+        inf_windows = self.split_spike(raw_unknown_data)
+        self.loader_v = self.prep_set_inf(inf_windows)
+
+    def norm_data(self, raw_data):
+        """
+        Norm raw_data between 1 and -1
+        centered about zero
+        """
+        ret_val = copy.deepcopy(raw_data)
+        raw_data_max = max(ret_val)
+        raw_data_min = min(ret_val)
+        ret_val = (2 * (ret_val - raw_data_min) /
+                   (raw_data_max - raw_data_min) - 1)
+        return ret_val
+
+    def split_spike(self, raw_unknown_data, capture_width=80, capture_weight=0.90):
+        """
+        :param capture_width:  How many samples per capture
+        :param capture_weight: A right bias value as the dataset
+                               tends to house important data on the right of idx
+        :return:               A list of all captures in format {Capture Ch0=[], Capture Ch1=[], Classification=int}
+        """
+        global_norm = np.array(self.norm_data(raw_unknown_data))
+        captures_list_all = []
+        for classification_index, idx in enumerate(self.idx_list):
+            # We rely on the norm and non-norm sets being the same len
+            cap_ch0 = [] # the global norm channel for nn
+            cap_ch1 = [] # the window-wise channel for nn
+            for sample_idx in range(int(idx - (capture_width * (1 - capture_weight))),
+                                    int(idx + (capture_width * capture_weight))):
+                cap_ch0.append(global_norm[sample_idx])
+                cap_ch1.append(raw_unknown_data[sample_idx])
+            captures_list_all.append({
+                "Capture Ch0": cap_ch0,
+                "Capture Ch1": self.norm_data(cap_ch1),
+                "PeakIdx": capture_width * (1 - capture_weight)
+            })
+        return captures_list_all
+
+    def prep_set_inf(self, windows):
+        ch0_list = [d["Capture Ch0"] for d in windows]
+        ch1_list = [d["Capture Ch1"] for d in windows]
+
+        ch0 = np.array(ch0_list, dtype=np.float32)
+        ch1 = np.array(ch1_list, dtype=np.float32)
+        assert ch0.shape == ch1.shape, "Channel 0 and 1 shapes must match!"
+
+        X = np.stack([ch0, ch1], axis=1)  # shape: (N, 2, T)
+        X_tensor = torch.tensor(X)
+        dataset = TensorDataset(X_tensor)
+        loader = DataLoader(dataset, batch_size=32, shuffle=True)
+
+        return loader
+
 def plot_classification(window, truth, infered):
     plt.figure(figsize=(10, 5))
     plt.plot(window, label='Signal', color='black')
