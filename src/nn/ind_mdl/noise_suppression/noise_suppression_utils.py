@@ -258,7 +258,7 @@ def spectral_power_degrade(clean, noisy, fs, nperseg=2048):
 
     return degraded
 
-def filter_wavelet(signal, fs=25000):
+def filter_wavelet(signal, fs=25_000):
     import pywt
     # High-pass filter to remove slow drift
     # This is only present in the final two datasets I think
@@ -280,5 +280,22 @@ def filter_wavelet(signal, fs=25000):
     clean_wavelet = clean_wavelet + eps
     return clean_wavelet
 
+def bandpass_neurons(signal, fs=25_000, f_low=3, f_high=2_000):
+    n = len(signal)
+    spectrum = np.fft.fft(signal)
+    freqs = np.fft.fftfreq(n, d=1/fs)
+    mask = (np.abs(freqs) >= f_low) & (np.abs(freqs) <= f_high)
+    filtered_spectrum = spectrum * mask
+    filtered_signal = np.fft.ifft(filtered_spectrum).real
 
+    return filtered_signal
 
+def highpass_neurons(signal, fs=25_000, f_low=3):
+    n = len(signal)
+    spectrum = np.fft.fft(signal)
+    freqs = np.fft.fftfreq(n, d=1/fs)
+    mask = (np.abs(freqs) >= f_low)
+    filtered_spectrum = spectrum * mask
+    filtered_signal = np.fft.ifft(filtered_spectrum).real
+
+    return filtered_signal

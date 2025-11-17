@@ -33,10 +33,10 @@ class TrainingData:
 
         # signal processing for the neuron data
         self.degraded_80dB_data = spectral_power_degrade(raw_80dB_data, raw_unknown_data, fs)
-        # the wavelet is making the model do nan lolllll
-        self.wavelet_degraded_80dB_data = filter_wavelet(self.degraded_80dB_data)
+        # bandpass to eliminate large signal sway (simulated for inf)
+        self.bandpass_degraded_80dB_data = bandpass_neurons(self.degraded_80dB_data)
 
-        X_tensors, y_tensors = self.prep_set_train(self.degraded_80dB_data,
+        X_tensors, y_tensors = self.prep_set_train(self.bandpass_degraded_80dB_data,
                                                    self.expanded_idx_ground_truth_bin)
         self.dataset_t = TensorDataset(X_tensors, y_tensors)
         self.loader_t = DataLoader(self.dataset_t, batch_size=64, shuffle=True)

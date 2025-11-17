@@ -36,7 +36,8 @@ class TrainingData:
 
         # signal processing for the neuron data
         self.degraded_80dB_data = np.array(spectral_power_degrade(raw_80dB_data, raw_unknown_data, fs))
-        self.degraded_80dB_data_global_norm = np.array(self.norm_data(self.degraded_80dB_data))
+        self.degraded_highpass_80dB_data = highpass_neurons(self.degraded_80dB_data)
+        self.degraded_highpass_80dB_data_global_norm = np.array(self.norm_data(self.degraded_highpass_80dB_data))
 
         # split spikes for training
         self.spike_windows_train = self.split_spike()[:split_index]
@@ -71,8 +72,8 @@ class TrainingData:
             cap_ch1 = [] # the window-wise channel for nn
             for sample_idx in range(int(idx - (capture_width * (1 - capture_weight))),
                                     int(idx + (capture_width * capture_weight))):
-                cap_ch0.append(self.degraded_80dB_data_global_norm[sample_idx])
-                cap_ch1.append(self.degraded_80dB_data[sample_idx])
+                cap_ch0.append(self.degraded_highpass_80dB_data_global_norm[sample_idx])
+                cap_ch1.append(self.degraded_highpass_80dB_data[sample_idx])
             captures_list_all.append({
                 "Capture Ch0": cap_ch0,
                 "Capture Ch1": self.norm_data(cap_ch1),
@@ -107,7 +108,8 @@ class InferenceDataCls:
 
         self.idx_list = idx_list
         # prep data loader
-        inf_windows = self.split_spike(raw_unknown_data)
+        raw_unknown_data_bandpass = bandpass_neurons(raw_unknown_data)
+        inf_windows = self.split_spike(raw_unknown_data_bandpass)
         self.loader_v = self.prep_set_inf(inf_windows)
 
     def norm_data(self, raw_data):
