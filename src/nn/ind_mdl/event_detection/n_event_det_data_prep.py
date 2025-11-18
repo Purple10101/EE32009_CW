@@ -107,10 +107,10 @@ class TrainingData:
 class InferenceData:
     def __init__(self, raw_unknown_data):
 
-        # signal processing for the neuron data
-        self.wavelet_degraded_80dB_data = filter_wavelet(raw_unknown_data)
+        # bandpass to eliminate large signal sway (simulated for inf)
+        self.bandpass_degraded_80dB_data = bandpass_neurons(raw_unknown_data)
 
-        X_tensors, self.index_map = self.prep_set_inf(raw_unknown_data)
+        X_tensors, self.index_map = self.prep_set_inf(self.bandpass_degraded_80dB_data)
         self.dataset_i = TensorDataset(X_tensors)
         self.loader_i = DataLoader(self.dataset_i, batch_size=64, shuffle=False)
 
@@ -158,11 +158,11 @@ class ValidationData:
 
         # signal processing for the neuron data
         self.degraded_80dB_data = spectral_power_degrade(raw_80dB_data, raw_unknown_data, fs)
-        # the wavelet is making the model do nan lolllll
-        self.wavelet_degraded_80dB_data = filter_wavelet(self.degraded_80dB_data)
+        # bandpass to eliminate large signal sway (simulated for inf)
+        self.bandpass_degraded_80dB_data = bandpass_neurons(self.degraded_80dB_data)
 
         X_tensors, y_tensors, self.index_map = (
-            self.prep_set_val(self.degraded_80dB_data,
+            self.prep_set_val(self.bandpass_degraded_80dB_data,
                               self.expanded_idx_ground_truth_bin))
         self.dataset_v = TensorDataset(X_tensors, y_tensors)
         self.loader_v = DataLoader(self.dataset_v, batch_size=64, shuffle=False)

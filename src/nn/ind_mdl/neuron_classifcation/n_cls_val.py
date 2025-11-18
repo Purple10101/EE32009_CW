@@ -52,18 +52,18 @@ ground_truth_data = data1['d'][0]
 ground_idx_list = data1['Index'][0]
 ground_cls_list = data1['Class'][0]
 
-target_data = data6['d'][0]
+target_data = data2['d'][0]
 
-training_set = TrainingData(ground_truth_data, target_data, ground_idx_list, ground_cls_list)
+training_set = TrainingData(ground_truth_data, ground_idx_list, ground_cls_list)
 
 print()
 ########################################################################################################################
 # MODEL SETUP, TRAINING PARAMS #
 ########################################################################################################################
 
-model = DualNormNeuronCNN(5).to(device)
+model = NeuronCNN(5).to(device)
 model.load_state_dict(torch.load(
-    "src/nn/ind_mdl/neuron_classifcation/models/D6/20251114_cls_cnn.pt"))
+    "src/nn/ind_mdl/neuron_classifcation/models/20251118_cls_cnn_all.pt"))
 model.eval()
 
 print()

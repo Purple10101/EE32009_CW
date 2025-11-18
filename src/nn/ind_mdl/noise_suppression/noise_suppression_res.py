@@ -20,6 +20,7 @@
 """
 from scipy.io import loadmat
 from pathlib import Path
+from src.nn.ind_mdl.noise_suppression.noise_suppression_utils import *
 import os
 import pickle
 
@@ -282,143 +283,12 @@ data4 = loadmat('data\D4.mat')
 data5 = loadmat('data\D5.mat')
 data6 = loadmat('data\D6.mat')
 
-# raw datasets
-data_80 = data1['d'][0]
-data_60 = degrade(data1['d'][0], data2['d'][0],0.25)
-data_40 = degrade(data1['d'][0], data3['d'][0], 0.4)
-data_20 = degrade(data1['d'][0], data4['d'][0], 0.6)
-data_0 = degrade(data1['d'][0], data5['d'][0], 0.8)
-data_sub0 = degrade(data1['d'][0], data6['d'][0], 1)
+data = data5['d'][0]
 
-supressed_d2 = spectral_power_suppress(data2['d'][0], data1['d'][0], 25000)
-supressed_d3 = spectral_power_suppress(data3['d'][0], data1['d'][0], 25000)
-supressed_d4 = spectral_power_suppress(data4['d'][0], data1['d'][0], 25000)
-supressed_d5 = spectral_power_suppress(data5['d'][0], data1['d'][0], 25000)
-supressed_d6 = spectral_power_suppress(data6['d'][0], data1['d'][0], 25000)
+plot_widow(data)
+plot_widow(bandpass_neurons(data))
 
-degraded_d1_d2 = spectral_power_degrade(data1['d'][0], data2['d'][0], 25000)
-degraded_d1_d3 = spectral_power_degrade(data1['d'][0], data3['d'][0], 25000)
-degraded_d1_d4 = spectral_power_degrade(data1['d'][0], data4['d'][0], 25000)
-degraded_d1_d5 = spectral_power_degrade(data1['d'][0], data5['d'][0], 25000)
-degraded_d1_d6 = spectral_power_degrade(data1['d'][0], data6['d'][0], 25000)
-
-wavlet_supressed_d2 = filter_wavelet(supressed_d2)
-wavlet_supressed_d3 = filter_wavelet(supressed_d3)
-wavlet_supressed_d4 = filter_wavelet(supressed_d4)
-wavlet_supressed_d5 = filter_wavelet(supressed_d5)
-wavlet_supressed_d6 = filter_wavelet(supressed_d6)
-
-wavlet_supressed_degraded_d1_d2 = filter_wavelet(degraded_d1_d2)
-wavlet_supressed_degraded_d1_d3 = filter_wavelet(degraded_d1_d3)
-wavlet_supressed_degraded_d1_d4 = filter_wavelet(degraded_d1_d4)
-wavlet_supressed_degraded_d1_d5 = filter_wavelet(degraded_d1_d5)
-wavlet_supressed_degraded_d1_d6 = filter_wavelet(degraded_d1_d6)
-
-#go_plot_time_series(supressed_d5[-1_000_000:-950_000])
-#go_plot_time_series(data_80[-1_000_000:-950_000])
-
-#plot_widow(data_80[-1_000_000:-950_000])
-#plot_widow(wavlet_supressed_d2[-1_000_000:-950_000])
-#plot_widow(wavlet_supressed_d3[-1_000_000:-950_000])
-#plot_widow(wavlet_supressed_d4[-1_000_000:-950_000])
-#plot_widow(wavlet_supressed_d5[-1_000_000:-950_000])
-#plot_widow(wavlet_supressed_d6[-1_000_000:-950_000])
-
-plot_widow(degraded_d1_d2, name="d1 degraded to mimic d2")
-plot_widow(data_80, name="d1")
-plot_widow(data2['d'][0], name="d2")
-plot_widow(wavlet_supressed_degraded_d1_d2, name="wavelet suppressed degraded d1")
-plot_widow(wavlet_supressed_d2, name="wavelet suppressed d2")
-plot_spect_comparason(data_80, data2['d'][0], degraded_d1_d2)
+plot_widow(data[-1_000_000:-900_000])
+plot_widow(bandpass_neurons(data)[-1_000_000:-900_000])
 
 print()
-
-# now lets do the same but a windowed approach to the unknow datasets
-reprocess = 0
-degraded_or_unknow = "degraded"
-
-def prep_unknown_windows(data, window_size=128, stride=32):
-    X = []
-    for i in range(0, len(data) - window_size, stride):
-        X.append(data[i:i + window_size])
-    return X
-
-def split_spikes(data, idx):
-    data, idx = np.array(data), np.array(idx)
-
-    half_win = int(50)
-    snippets = []
-    for i in idx:
-        if i - half_win < 0 or i + half_win >= len(data):
-            continue
-        seg = data[i - half_win: i + half_win]
-        snippets.append(seg)
-    return np.array(snippets)
-
-def window_spectral_power(window, fs=25000, plot=None):
-    freqs, power = welch(window, fs=fs, nperseg=len(window))
-    if plot is not None:
-        plt.figure(figsize=(8, 4))
-        plt.plot(freqs, power)
-        plt.xlabel("Frequency (Hz)")
-        plt.ylabel("Power")
-        plt.title("Power Spectrum of Neuron Activity (One Window)")
-        plt.grid(True)
-        plt.tight_layout()
-        plt.show(block=False)
-    return [freqs, power]
-
-def collect_dataset_info(dataset):
-    windows = prep_unknown_windows(dataset)
-    windows_info = []
-    for window in windows:
-        windows_info.append(
-            {
-                "Data": window,
-                "Spectral Power": window_spectral_power(window),
-            }
-        )
-    return windows_info
-
-
-
-try:
-    if reprocess == 1:
-        raise FileNotFoundError
-    with (open(f"src/nn/ind_mdl/noise_suppression/python_vars/processed_{degraded_or_unknow}_datasets_spect.pkl", "rb")
-          as f):
-        processed_datasets = pickle.load(f)
-except FileNotFoundError:
-    if degraded_or_unknow == "degraded":
-        unknow_datasets = [data_60, data_40, data_20, data_0, data_sub0]
-    else:
-        unknow_datasets = [data2['d'][0], data3['d'][0], data4['d'][0], data5['d'][0], data6['d'][0]]
-    processed_datasets = []
-    for dataset in unknow_datasets:
-        processed_datasets.append(collect_dataset_info(dataset))
-
-    with (open(f"src/nn/ind_mdl/noise_suppression/python_vars/processed_{degraded_or_unknow}_datasets_spect.pkl", "wb")
-          as f):
-        pickle.dump(processed_datasets, f)
-
-for dataset_info in processed_datasets[-2:]:
-    significant_windows = []
-    random_indices = np.random.randint(0, len(dataset_info), size=100)
-    random_windows = [dataset_info[i] for i in random_indices]
-    for window in random_windows:
-        freqs, power = window["Spectral Power"]
-        max_power = np.max(power)
-        if max_power == 0:
-            continue
-
-        # Power below 2 kHz
-        below_mask = freqs < 2000
-        below_power = power[below_mask]
-
-        # Check if any low-frequency component is "significant"
-        if np.any(below_power >= 0.1 * max_power):
-            significant_windows.append(window)
-            plot_window_with_spectrum(window["Data"], window["Spectral Power"])
-            print()
-
-

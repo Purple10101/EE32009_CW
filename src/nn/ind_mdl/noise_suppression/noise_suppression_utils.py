@@ -223,11 +223,8 @@ def spectral_power_suppress(noisy, clean, fs, nperseg=2048):
     X_suppressed = X * G_interp
     # Back to time domain
     denoised = np.fft.irfft(X_suppressed, n=N)
-    # remove the low freq sway
-    b, a = signal.butter(4, 3 / (fs / 2), btype='highpass')
-    filtered = signal.filtfilt(b, a, denoised)
 
-    return filtered
+    return denoised
 
 def spectral_power_degrade(clean, noisy, fs, nperseg=2048):
     """

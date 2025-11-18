@@ -59,7 +59,7 @@ idx_train = idx_bin[split_index:]
 
 val_set = ValidationData(data1_val, data_unknown_val, idx_train)
 
-plot_sample_with_binary(val_set.wavelet_degraded_80dB_data, val_set.wavelet_degraded_80dB_data)
+plot_sample_with_binary(val_set.bandpass_degraded_80dB_data, val_set.bandpass_degraded_80dB_data)
 
 # now prep the d2 set for total inference.
 
@@ -74,7 +74,7 @@ print()
 
 model = SpikeNet().to(device)
 model.load_state_dict(torch.load(
-    "src/nn/ind_mdl/event_detection/models/D6/20251114_neuron_event_det_cnn.pt"))
+    "src/nn/ind_mdl/event_detection/models/D6/20251118_neuron_event_det_cnn.pt"))
 model.eval()
 
 print()
