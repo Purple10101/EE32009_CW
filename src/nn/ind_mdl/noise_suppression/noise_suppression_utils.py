@@ -199,9 +199,15 @@ def degrade(raw_data, mimic_sig, noise_scale=1):
 
     return noisy_out
 
-def spectral_power_suppress(noisy, clean, fs, nperseg=2048):
+def spectral_power_suppress(noisy, clean, fs, gain_scalr, nperseg=2048):
     """
     Suppress the power of noisy signal to match that of clean signal across frequency bands.
+    gain_scalr value tuning guide:
+        D2 = 1.5
+        D3 = 1.5
+        D4 = 1.5
+        D5 = 1.5
+        D6 = 1.5
     """
     from scipy import signal
     # Estimate PSDs
@@ -220,10 +226,9 @@ def spectral_power_suppress(noisy, clean, fs, nperseg=2048):
     # Interpolate gain to FFT bins
     G_interp = np.interp(freqs, f, G, left=G[0], right=G[-1])
     # Apply soft suppression
-    X_suppressed = X * G_interp
+    X_suppressed = X * G_interp * gain_scalr # this scalar is a tuning value
     # Back to time domain
     denoised = np.fft.irfft(X_suppressed, n=N)
-
     return denoised
 
 def spectral_power_degrade(clean, noisy, fs, nperseg=2048):
@@ -255,27 +260,20 @@ def spectral_power_degrade(clean, noisy, fs, nperseg=2048):
 
     return degraded
 
-def filter_wavelet(signal, fs=25_000):
+def filter_wavelet(signal, thresh_scale=1.2):
     import pywt
-    # High-pass filter to remove slow drift
-    # This is only present in the final two datasets I think
-    nyq = 0.5 * fs
-    b, a = butter(3,   10 / nyq, btype='high')
-    signal_hp = filtfilt(b, a, signal)
-
-    # Wavelet denoising
+    # Wavelet decomposition
     wavelet = 'db4'
-    coeffs = pywt.wavedec(signal_hp, wavelet, level=5)
-
-    sigma = np.median(np.abs(coeffs[-1])) / 0.6745
-    uthresh = 0.7 * sigma * np.sqrt(2 * np.log(len(signal_hp))) # tuned 0.7 try other else
-
-    coeffs_thresh = [pywt.threshold(c, value=uthresh, mode='soft') for c in coeffs]
-    clean_wavelet = pywt.waverec(coeffs_thresh, wavelet)
-    # Add tiny noise to prevent zero-flat NaNs later
-    eps = 1e-4 * np.random.randn(len(clean_wavelet))
-    clean_wavelet = clean_wavelet + eps
-    return clean_wavelet
+    level = 4
+    coeffs = pywt.wavedec(signal, wavelet, level=level)
+    detail_finest = coeffs[-1]
+    sigma = np.median(np.abs(detail_finest)) / 0.6745
+    uthr = thresh_scale * sigma * np.sqrt(2 * np.log(len(signal)))
+    new_coeffs = [coeffs[0]]
+    for d in coeffs[1:]:
+        new_coeffs.append(pywt.threshold(d, uthr, mode="hard"))
+    y = pywt.waverec(new_coeffs, wavelet)
+    return y[: len(signal)]
 
 def bandpass_neurons(signal, fs=25_000, f_low=3, f_high=2_000):
     n = len(signal)
@@ -296,3 +294,19 @@ def highpass_neurons(signal, fs=25_000, f_low=3):
     filtered_signal = np.fft.ifft(filtered_spectrum).real
 
     return filtered_signal
+
+def norm_data(raw_data):
+    """
+    Norm raw_data between 1 and -1
+    centered about zero
+    """
+    import copy
+    ret_val = copy.deepcopy(raw_data)
+    raw_data_max = max(ret_val)
+    raw_data_min = min(ret_val)
+    ret_val = (2 * (ret_val - raw_data_min) /
+               (raw_data_max - raw_data_min) - 1)
+    return ret_val
+
+def get_d1_noise(d1_data_window):
+    print()

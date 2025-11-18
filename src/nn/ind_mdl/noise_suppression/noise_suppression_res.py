@@ -197,36 +197,6 @@ def degrade(raw_data, mimic_sig, noise_scale=1):
 
     return noisy_out
 
-def spectral_power_suppress(noisy, clean, fs, nperseg=2048):
-    """
-    Suppress the power of noisy signal to match that of clean signal across frequency bands.
-    """
-    from scipy import signal
-    # Estimate PSDs
-    f, P_noisy = signal.welch(noisy, fs=fs, nperseg=nperseg)
-    _, P_clean = signal.welch(clean, fs=fs, nperseg=nperseg)
-    # Compute gain curve (avoid division by zero)
-    eps = 1e-12
-    G = np.sqrt((P_clean + eps) / (P_noisy + eps))
-    # Smooth the gain a little to avoid spectral artifacts
-    G = signal.savgol_filter(G, 31, 3)  # 31-pt window, cubic poly
-    # Apply gain curve in frequency domain
-    # FFT of the noisy signal
-    N = len(noisy)
-    freqs = np.fft.rfftfreq(N, 1/fs)
-    X = np.fft.rfft(noisy)
-    # Interpolate gain to FFT bins
-    G_interp = np.interp(freqs, f, G, left=G[0], right=G[-1])
-    # Apply soft suppression
-    X_suppressed = X * G_interp
-    # Back to time domain
-    denoised = np.fft.irfft(X_suppressed, n=N)
-    # remove the low freq sway
-    b, a = signal.butter(4, 3 / (fs / 2), btype='highpass')
-    filtered = signal.filtfilt(b, a, denoised)
-
-    return filtered
-
 def spectral_power_degrade(clean, noisy, fs, nperseg=2048):
     """
     Apply spectral power shaping to make a clean signal sound like the noisy one.
@@ -276,6 +246,63 @@ def filter_wavelet(signal, fs=25000):
 
     return clean_wavelet
 
+########################################################################################################################
+# OPERATION CHAIN FUNCTIONS #
+########################################################################################################################
+
+
+def wt_test(dn_signal, d1_signal, fs=25000):
+    # We like this pipeline
+    dn_ss = spectral_power_suppress(dn_signal, d1_signal, fs=fs, gain_scalr=1)
+    dn_ss_bandpass = bandpass_neurons(dn_ss, fs=fs)
+    dn_ss_bandpass_wt = filter_wavelet(dn_ss_bandpass)
+    x = np.arange(len(dn_signal))
+
+    plot_widow(dn_ss_bandpass_wt[-400_000:-390_000])
+    plot_widow(dn_signal[-400_000:-390_000])
+    print()
+
+def event_detection_train_pl(d1_signal):
+    # This will be like this
+    # Spectral degrade -> spectral supress -> bandpass -> wt
+    print()
+
+def event_detection_inf_pl(dn_signal, d1_signal, fs=25000):
+    dn_ss = spectral_power_suppress(dn_signal, d1_signal, fs=fs, gain_scalr=1)
+    dn_ss_bandpass = bandpass_neurons(dn_ss, fs=fs)
+    dn_ss_bandpass_wt = filter_wavelet(dn_ss_bandpass) #  this will be inference data
+
+    plot_spect_comparason(d1_signal, dn_signal, dn_ss_bandpass)
+
+    x = np.arange(len(dn_signal))[-400_000:-390_000]
+    # Plot all in one figure
+    plt.figure(figsize=(10, 5))
+
+    plt.plot(x, norm_data(dn_signal)[-400_000:-390_000], label="Raw signal DN")
+    plt.plot(x, norm_data(bandpass_neurons(d1_signal))[-400_000:-390_000], label="Reference signal")
+    plt.plot(x, norm_data(dn_ss)[-400_000:-390_000], label="signal DN after spec suppression")
+    plt.plot(x, norm_data(dn_ss_bandpass)[-400_000:-390_000], label="signal DN after spec suppression and bandpass")
+    plt.plot(x, norm_data(dn_ss_bandpass_wt)[-400_000:-390_000], label="signal DN after spec suppression, bandpass, wt")
+
+    plt.legend()
+    plt.xlabel("x")
+    plt.ylabel("y")
+    plt.title("Event detection inf pipeline")
+    plt.grid(True)
+    plt.show(block=False)
+    print()
+
+    plt.show()
+
+
+def cls_train_pl(d1_signal):
+    print()
+
+def cls_inf_pl(dn_signal):
+    print()
+
+
+
 data1 = loadmat('data\D1.mat')
 data2 = loadmat('data\D2.mat')
 data3 = loadmat('data\D3.mat')
@@ -283,12 +310,20 @@ data4 = loadmat('data\D4.mat')
 data5 = loadmat('data\D5.mat')
 data6 = loadmat('data\D6.mat')
 
-data = data5['d'][0]
+data = data4['d'][0]
+data_ref = data1['d'][0]
+
+wt_test(data, data_ref)
+event_detection_inf_pl(data, data_ref)
+
+
 
 plot_widow(data)
 plot_widow(bandpass_neurons(data))
 
 plot_widow(data[-1_000_000:-900_000])
 plot_widow(bandpass_neurons(data)[-1_000_000:-900_000])
+
+
 
 print()
