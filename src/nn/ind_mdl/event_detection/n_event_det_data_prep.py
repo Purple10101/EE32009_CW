@@ -31,7 +31,7 @@ class TrainingData:
         self.idx_ground_truth_bin = idx_bin
         self.expanded_idx_ground_truth_bin = self.widen_labels()
 
-        # signal processing for the neuron data
+        # Data Processing Pipeline
         degraded_80dB_data = zscore(spectral_power_degrade(raw_80dB_data, raw_unknown_data, fs))
         degraded_80dB_resynth_data = zscore(spectral_power_suppress(degraded_80dB_data, raw_80dB_data, fs))
         wt_degraded_80dB_resynth_data = zscore(filter_wavelet(degraded_80dB_resynth_data))
@@ -43,8 +43,8 @@ class TrainingData:
 
         self.data_proc = bp_wt_degraded_80dB_resynth_data
 
-        plot_widow(self.data_proc[10_000:])
-        plot_widow(self.data_proc[100_000:101_000])
+        #plot_widow(self.data_proc[10_000:])
+        #plot_widow(self.data_proc[100_000:101_000])
 
         X_tensors, y_tensors = self.prep_set_train(self.data_proc,
                                                    self.expanded_idx_ground_truth_bin)
@@ -115,7 +115,7 @@ class TrainingData:
 class InferenceDataEvntDet:
     def __init__(self, raw_unknown_data, raw_80dB_data, fs=25_000):
 
-        # bandpass to eliminate large signal sway (simulated for inf)
+        # Data Processing Pipeline
         spect_supress_data = zscore(spectral_power_suppress(raw_unknown_data, raw_80dB_data, fs))
         wt_spect_supress_data = zscore(filter_wavelet(spect_supress_data))
         bandpass_wt_spect_supress_data = zscore(bandpass_neurons(wt_spect_supress_data))
@@ -152,7 +152,7 @@ class ValidationData:
         self.idx_ground_truth_bin = idx_bin
         self.expanded_idx_ground_truth_bin = self.widen_labels()
 
-        # signal processing for the neuron data
+        # Data Processing Pipeline
         degraded_80dB_data = zscore(spectral_power_degrade(raw_80dB_data, raw_unknown_data, fs))
         degraded_80dB_resynth_data = zscore(spectral_power_suppress(degraded_80dB_data, raw_80dB_data, fs))
         wt_degraded_80dB_resynth_data = zscore(filter_wavelet(degraded_80dB_resynth_data))
@@ -207,6 +207,11 @@ class ValidationData:
         index_map = np.stack(index_map)  # (N, window_size)
         print(X.size(), y.size())
         return X, y, index_map
+
+
+########################################################################################################################
+# UTILS #
+########################################################################################################################
 
 
 def nonmax_rejection(preds, threshold, refractory=3):

@@ -93,12 +93,13 @@ class RecordingInf:
             raw_data = dataset['d'][0]
 
             # do forward pass of model_evnt_det with raw_data
-            self.index_lst, self.index_bin = self.event_det_inf(raw_data, event_detection_models[i], i)
+            self.index_lst, self.index_bin, event_det_inf_dataset = self.event_det_inf(raw_data,
+                                                                                       event_detection_models[i], i)
             # do forward pass of model_cls with data_norm with respect to index_lst
             self.cls_lst = self.cls_inf(raw_data, neuron_classification_models[i])
 
             # export
-            self.export_mat(raw_data, dataset_ids[i])
+            self.export_mat(event_det_inf_dataset, dataset_ids[i])
             print(f"exported {dataset_ids[i]}")
 
     def event_det_inf(self, dataset, model, dataset_id):
@@ -135,7 +136,7 @@ class RecordingInf:
             preds = nonmax_rejection(final_probs, self.threshold)
 
         output_indexes = np.where(preds == 1)[0]
-        return output_indexes, preds
+        return output_indexes, preds, inference_dataset.data_proc
 
     def cls_inf(self, dataset, model):
         import torch.nn.functional as F
