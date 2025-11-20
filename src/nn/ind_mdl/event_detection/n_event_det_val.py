@@ -65,7 +65,7 @@ plot_sample_with_binary(val_set.data_proc, val_set.idx_ground_truth_bin)
 
 data_inf = data2['d'][0]
 
-inf_set = InferenceData(data_inf, data1['d'][0])
+inf_set = InferenceDataEvntDet(data_inf, data1['d'][0])
 
 print()
 ########################################################################################################################
@@ -162,7 +162,8 @@ plot_sample_with_binary(inf_set.data_proc[-11000:], preds[-11000:])
 
 import pickle
 with open("src/nn/ind_mdl/inference_pkl/D2.pkl", "wb") as f:
-    pickle.dump(preds, f)
+    output_indexes = np.where(preds == 1)[0]
+    pickle.dump(output_indexes, f)
 
 print()
 

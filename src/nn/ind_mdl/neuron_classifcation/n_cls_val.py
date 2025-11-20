@@ -60,7 +60,7 @@ import pickle
 with open("src/nn/ind_mdl/inference_pkl/D2.pkl", "rb") as f:
     preds_loaded = pickle.load(f)
 
-inference_set = InferenceData(target_data, ground_truth_data, preds_loaded)
+inference_set = InferenceDataCls(target_data, ground_truth_data, preds_loaded)
 
 print()
 ########################################################################################################################
@@ -120,21 +120,18 @@ print()
 # INFERENCE FORWARD PASS #
 ########################################################################################################################
 model_preds = []
+print_count = 0
 with torch.no_grad():
-    for batch in inference_set.loader_i:
-        # Unpack the batch
-        (X_batch,) = batch  # shape: (B, 2, T)
-        X_batch = X_batch.to(device)
-        logits = model(X_batch)
-        probs = F.softmax(logits, dim=1)
+    for capture in inference_set.inf_windows:
+        X = np.array(capture["Capture"], dtype=np.float32)
+        X = np.expand_dims(X, axis=1)
+        X_tensor = torch.tensor(X).T.unsqueeze(0).to(device)
+        output = model(X_tensor)
+        predicted = torch.argmax(output) + 1  # classes 1-5 not 0-4
+        model_preds.append(predicted.item())
 
-        # Check each sample for low-confidence predictions
-        max_probs, _ = torch.max(probs, dim=1)
-        for i, p in enumerate(max_probs):
-            if p.item() < 0.3:
-                print(f"[Warning] Sample {i} in this batch has very low confidence: max prob = {p.item():.4f}")
-
-        preds = torch.argmax(probs, dim=1) + 1  # classes 1-5 not 0-4
-        model_preds.extend(preds.cpu().numpy())
+        if predicted == 2 and print_count <10:
+            plot_classification(capture["Capture"], predicted, predicted)
+            print_count += 1
 
 print()

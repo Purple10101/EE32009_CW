@@ -102,7 +102,7 @@ class TrainingValidationData:
         return loader
 
 
-class InferenceData:
+class InferenceDataCls:
     def __init__(self, raw_unknown_data, raw_80dB_data, idx_list, fs=25_000):
 
         self.idx_list = idx_list
@@ -111,8 +111,7 @@ class InferenceData:
         bandpass_wt_spect_supress_data = zscore(bandpass_neurons(spect_supress_data))
         self.data_proc = bandpass_wt_spect_supress_data
 
-        inf_windows = self.split_spike(self.data_proc)
-        self.loader_i = self.prep_set_inf(inf_windows)
+        self.inf_windows = self.split_spike(self.data_proc)
 
     def split_spike(self, raw_unknown_data, capture_width=64, capture_weight=0.80):
         """
@@ -133,23 +132,12 @@ class InferenceData:
             if len(cap) < capture_width:
                 pad_len = capture_width - len(cap)
                 cap.extend([cap[-1]] * pad_len)
+            #plot_widow(cap)
             captures_list_all.append({
                 "Capture": cap,
                 "PeakIdx": capture_width * (1 - capture_weight)
             })
         return captures_list_all
-
-    def prep_set_inf(self, windows):
-        cap_list = [d["Capture"] for d in windows]
-
-        X = np.array(cap_list, dtype=np.float32)
-        X = np.expand_dims(X, axis=1)
-
-        X_tensor = torch.tensor(X)
-        dataset = TensorDataset(X_tensor)
-        loader = DataLoader(dataset, batch_size=32, shuffle=False)
-
-        return loader
 
 
 def plot_classification(window, truth, infered):

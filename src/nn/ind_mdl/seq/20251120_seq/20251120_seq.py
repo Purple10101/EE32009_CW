@@ -73,11 +73,11 @@ class RecordingInf:
         # classifcation
         neuron_classification_models = []
         model_paths = [
-            "src/nn/ind_mdl/neuron_classifcation/models/20251118_cls_cnn_all.pt",
-            "src/nn/ind_mdl/neuron_classifcation/models/20251118_cls_cnn_all.pt",
-            "src/nn/ind_mdl/neuron_classifcation/models/20251118_cls_cnn_all.pt",
-            "src/nn/ind_mdl/neuron_classifcation/models/20251118_cls_cnn_all.pt",
-            "src/nn/ind_mdl/neuron_classifcation/models/20251118_cls_cnn_all.pt"
+            "src/nn/ind_mdl/neuron_classifcation/models/D2/20251120_cls_cnn_all.pt",
+            "src/nn/ind_mdl/neuron_classifcation/models/D3/20251120_cls_cnn_all.pt",
+            "src/nn/ind_mdl/neuron_classifcation/models/D4/20251120_cls_cnn_all.pt",
+            "src/nn/ind_mdl/neuron_classifcation/models/D5/20251120_cls_cnn_all.pt",
+            "src/nn/ind_mdl/neuron_classifcation/models/D6/20251120_cls_cnn_all.pt"
         ]
         for path in model_paths:
             model = NeuronCNN(5).to(device)
@@ -103,7 +103,7 @@ class RecordingInf:
 
     def event_det_inf(self, dataset, model, dataset_id):
 
-        inference_dataset = InferenceData(dataset, data1['d'][0])
+        inference_dataset = InferenceDataEvntDet(dataset, data1['d'][0])
 
         model.eval()
         all_outputs = []
@@ -144,21 +144,18 @@ class RecordingInf:
         model_preds = []
 
         with torch.no_grad():
-            for batch in inference_dataset.loader_v:
-                # Unpack the batch
-                (X_batch,) = batch  # shape: (B, 2, T)
-                X_batch = X_batch.to(device)
-                logits = model(X_batch)
-                probs = F.softmax(logits, dim=1)
+            for capture in inference_dataset.inf_windows:
+                X = np.array(capture["Capture"], dtype=np.float32)
+                X = np.expand_dims(X, axis=1)
+                X_tensor = torch.tensor(X).T.unsqueeze(0).to(device)
+                output = model(X_tensor)
+                predicted = torch.argmax(output) + 1  # classes 1-5 not 0-4
+                model_preds.append(predicted.item())
 
                 # Check each sample for low-confidence predictions
-                max_probs, _ = torch.max(probs, dim=1)
-                for i, p in enumerate(max_probs):
-                    if p.item() < 0.3:
-                        print(f"[Warning] Sample {i} in this batch has very low confidence: max prob = {p.item():.4f}")
+                if np.array(output).max() < 0.3:
+                    print(f"Capture inf very low confidence: prob = {np.array(output).max():.4f}")
 
-                preds = torch.argmax(probs, dim=1) + 1 # classes 1-5 not 0-4
-                model_preds.extend(preds.cpu().numpy())
         return model_preds
 
     def export_mat(self, data, dataset_id):
@@ -167,12 +164,12 @@ class RecordingInf:
             "Index": self.index_lst,
             "Class" : self.cls_lst
         }
-        savemat(f"src/nn/ind_mdl/seq/20251118_seq/outputs/vis/{dataset_id}_vis.mat", export_data)
+        savemat(f"src/nn/ind_mdl/seq/20251120_seq/outputs/vis/{dataset_id}_vis.mat", export_data)
         export_data_sub = {
             "Index": self.index_lst,
             "Class" : self.cls_lst
         }
-        savemat(f"src/nn/ind_mdl/seq/20251118_seq/outputs/sub/{dataset_id}.mat", export_data_sub)
+        savemat(f"src/nn/ind_mdl/seq/20251120_seq/outputs/sub/{dataset_id}.mat", export_data_sub)
 
 
 dataset_80db = loadmat('data\D1.mat') # this was the training set

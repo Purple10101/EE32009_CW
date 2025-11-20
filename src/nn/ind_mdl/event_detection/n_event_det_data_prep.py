@@ -112,7 +112,7 @@ class TrainingData:
         return X, y
 
 
-class InferenceData:
+class InferenceDataEvntDet:
     def __init__(self, raw_unknown_data, raw_80dB_data, fs=25_000):
 
         # bandpass to eliminate large signal sway (simulated for inf)
