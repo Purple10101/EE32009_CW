@@ -152,10 +152,6 @@ class RecordingInf:
                 predicted = torch.argmax(output) + 1  # classes 1-5 not 0-4
                 model_preds.append(predicted.item())
 
-                # Check each sample for low-confidence predictions
-                if np.array(output).max() < 0.3:
-                    print(f"Capture inf very low confidence: prob = {np.array(output).max():.4f}")
-
         return model_preds
 
     def export_mat(self, data, dataset_id):

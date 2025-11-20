@@ -126,7 +126,10 @@ class InferenceDataCls:
             cap = []
             for sample_idx in range(int(idx - (capture_width * (1 - capture_weight))),
                                     int(idx + (capture_width * capture_weight))):
-                cap.append(raw_unknown_data[sample_idx])
+                if 0 <= sample_idx < len(raw_unknown_data):
+                    cap.append(raw_unknown_data[sample_idx])
+                else:
+                    cap.append(0)
             # pad to ensure dimensionality
             # this only happens if a spike occurs too soon or too late
             if len(cap) < capture_width:
