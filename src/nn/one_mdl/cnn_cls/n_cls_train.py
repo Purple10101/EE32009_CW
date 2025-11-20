@@ -4,23 +4,12 @@
  Title:        n_cls_train.py
  Description:
  Author:       Joshua Poole
- Created on:   20251024
- Version:      1.1
+ Created on:   20251104
+ Version:      1.0
 ===========================================================
 
  Notes:
-    - So things that could be hampering the performance:
-        - Normalisation?
-            - Right now you norm each capture independently.
-              This could be an issue!
-        - More variations of the degraded training set?
-        - Shuffling the training set?
-        - Criterion and optimiser?
-        - Could you randomly deteriorate some samples?
-          so that its being fed one at 80 then one at 0 then one at 60
-
-        - !!!! Norm the whole thing. Different neurons have different amplitudes
-          you might actually be stupid for not picking up on that bro icl
+    -
 
  Requirements:
     - Python >= 3.11
@@ -42,11 +31,11 @@ import torch.nn.functional as F
 from torch.utils.data import TensorDataset, DataLoader
 
 from src.ext.data_loader_cls import plot_sample
-from src.nn.cnn_cls.n_cls import NeuronCNN
-from src.nn.cnn_cls.n_cls_utils import noise_plt_example, RecordingTrain,  prep_training_set, degrade
+from src.nn.ind_mdl.cnn_cls.n_cls import NeuronCNN
+from src.nn.ind_mdl.cnn_cls.n_cls_utils import RecordingTrain, prep_training_set, degrade
 
 
-os.chdir(os.path.dirname(os.path.dirname(os.path.dirname(os.getcwd()))))
+os.chdir(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.getcwd())))))
 print(os.getcwd())
 
 # data prep

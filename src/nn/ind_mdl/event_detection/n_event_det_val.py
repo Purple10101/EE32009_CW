@@ -54,18 +54,18 @@ split_index = int(len(data1['d'][0]) * 0.8)
 
 data1_val = data1['d'][0][split_index:]
 # we need d2 to be the same size so unfortunately we lose some resolution
-data_unknown_val = data6['d'][0][split_index:]
+data_unknown_val = data2['d'][0][split_index:]
 idx_train = idx_bin[split_index:]
 
-val_set = ValidationData(data1_val, data_unknown_val, idx_train)
+val_set = ValidationData(data1_val, data_unknown_val, idx_train, 2)
 
-plot_sample_with_binary(val_set.bandpass_degraded_80dB_data, val_set.bandpass_degraded_80dB_data)
+plot_sample_with_binary(val_set.data_proc, val_set.idx_ground_truth_bin)
 
 # now prep the d2 set for total inference.
 
-data_inf = data6['d'][0]
+data_inf = data2['d'][0]
 
-inf_set = InferenceData(data_inf)
+inf_set = InferenceData(data_inf, data1['d'][0])
 
 print()
 ########################################################################################################################
@@ -74,7 +74,7 @@ print()
 
 model = SpikeNet().to(device)
 model.load_state_dict(torch.load(
-    "src/nn/ind_mdl/event_detection/models/D6/20251118_neuron_event_det_cnn.pt"))
+    "src/nn/ind_mdl/event_detection/models/D2/20251120_neuron_event_det_cnn.pt"))
 model.eval()
 
 print()
@@ -95,7 +95,7 @@ with torch.no_grad():  # disables gradient computation (saves memory)
 # Stack all batches back together
 outputs_v = np.concatenate(all_outputs, axis=0)  # (num_windows, window_size)
 # construct our outputs list
-n_total = len(val_set.degraded_80dB_data)
+n_total = len(val_set.data_proc)
 final_probs = np.zeros(n_total)
 counts = np.zeros(n_total)
 
@@ -107,7 +107,7 @@ for i in range(outputs_v.shape[0]):
 final_probs /= np.maximum(counts, 1)
 preds = nonmax_rejection(final_probs, 0.9)
 print(len([x for x in preds if x != 0]))
-plot_sample_with_binary(val_set.degraded_80dB_data[-11000:], preds[-11000:])
+plot_sample_with_binary(val_set.data_proc[-11000:], preds[-11000:])
 
 metrics = tolerant_binary_metrics(preds, val_set.idx_ground_truth_bin, tol=50)
 print(f"Accuracy:  {metrics['accuracy']:.3f}")
@@ -154,8 +154,25 @@ for i in range(outputs_i.shape[0]):
 
 # Average overlapping predictions
 final_probs /= np.maximum(counts, 1)
-preds = nonmax_rejection(final_probs, 0.9)
+
+preds = nonmax_rejection(final_probs, 0.9, refractory=3)
 print(len([x for x in preds if x != 0]))
 plot_sample_with_binary(data_inf[-11000:], preds[-11000:])
+plot_sample_with_binary(inf_set.data_proc[-11000:], preds[-11000:])
+
+import pickle
+with open("src/nn/ind_mdl/inference_pkl/D2.pkl", "wb") as f:
+    pickle.dump(preds, f)
 
 print()
+
+"""
+Prediction counts for all datasets
+
+D2 = 3728 vs true 3985
+D3 = 3095 vs true 3327
+D4 = 3488 vs true 3031
+D5 = 2637 vs true 2582 # colored noise with sd=3
+D6 = 3609 vs true 3911 # colored noise with sd=5, th = 0.85
+
+"""

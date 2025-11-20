@@ -63,9 +63,9 @@ data1_train = data1['d'][0][:split_index]
 data_unknown_train = data6['d'][0][:split_index]
 idx_train = idx_bin[:split_index]
 
-training_set = TrainingData(data1_train, data_unknown_train, idx_train)
+training_set = TrainingData(data1_train, data_unknown_train, idx_train, 6)
 
-plot_sample_with_binary(training_set.bandpass_degraded_80dB_data, training_set.bandpass_degraded_80dB_data)
+plot_sample_with_binary(training_set.data_proc[-11_000:], training_set.idx_ground_truth_bin[-11_000:])
 
 print()
 ########################################################################################################################
@@ -77,7 +77,7 @@ criterion = nn.BCELoss()
 optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
 
 training_threshold = 0.7
-num_epochs = 100
+num_epochs = 50
 
 print()
 ########################################################################################################################
@@ -142,7 +142,15 @@ print()
 ########################################################################################################################
 
 torch.save(model.state_dict(),
-           "src/nn/ind_mdl/event_detection/models/D6/20251118_neuron_event_det_cnn.pt")
+           "src/nn/ind_mdl/event_detection/models/D6/20251120_neuron_event_det_cnn.pt")
+
+"""
+Params Used:
+prev:  window_interleave=1, refractory=3
+D5:    window_interleave=5, refractory=10, label widening: width=3
+D6:    window_interleave=5, refractory=10, label widening: width=3
+"""
+
 
 print()
 

@@ -199,15 +199,9 @@ def degrade(raw_data, mimic_sig, noise_scale=1):
 
     return noisy_out
 
-def spectral_power_suppress(noisy, clean, fs, gain_scalr, nperseg=2048):
+def spectral_power_suppress(noisy, clean, fs, nperseg=2048):
     """
     Suppress the power of noisy signal to match that of clean signal across frequency bands.
-    gain_scalr value tuning guide:
-        D2 = 1.5
-        D3 = 1.5
-        D4 = 1.5
-        D5 = 1.5
-        D6 = 1.5
     """
     from scipy import signal
     # Estimate PSDs
@@ -226,7 +220,7 @@ def spectral_power_suppress(noisy, clean, fs, gain_scalr, nperseg=2048):
     # Interpolate gain to FFT bins
     G_interp = np.interp(freqs, f, G, left=G[0], right=G[-1])
     # Apply soft suppression
-    X_suppressed = X * G_interp * gain_scalr # this scalar is a tuning value
+    X_suppressed = X * G_interp
     # Back to time domain
     denoised = np.fft.irfft(X_suppressed, n=N)
     return denoised
@@ -295,18 +289,23 @@ def highpass_neurons(signal, fs=25_000, f_low=3):
 
     return filtered_signal
 
-def norm_data(raw_data):
-    """
-    Norm raw_data between 1 and -1
-    centered about zero
-    """
-    import copy
-    ret_val = copy.deepcopy(raw_data)
-    raw_data_max = max(ret_val)
-    raw_data_min = min(ret_val)
-    ret_val = (2 * (ret_val - raw_data_min) /
-               (raw_data_max - raw_data_min) - 1)
-    return ret_val
+def zscore(x):
+    x = np.asarray(x, dtype=np.float32)
+    m = x.mean(dtype=np.float64)
+    s = x.std(dtype=np.float64)
+    return (x -m)/(s+1e-8)
 
-def get_d1_noise(d1_data_window):
-    print()
+def add_bounded_noise(signal, noise_min=-2, noise_max=2):
+    signal = np.asarray(signal)
+    noise = np.random.uniform(noise_min, noise_max, size=signal.shape)
+    return signal + noise
+
+
+def add_colored_noise(signal, std):
+    white = np.random.normal(0, std, len(signal))
+
+    # Low-pass filter to create slow drift
+    b, a = butter(2, 0.05)
+    drift = filtfilt(b, a, white)
+
+    return signal + drift

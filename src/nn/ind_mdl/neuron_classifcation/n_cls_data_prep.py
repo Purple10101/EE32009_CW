@@ -24,41 +24,30 @@ import copy
 from src.nn.ind_mdl.noise_suppression.noise_suppression_utils import *
 
 
-class TrainingData:
-    def __init__(self, raw_80dB_data, idx_list, cls_list, fs=25000):
-        # index and class logic
-        split_index = int(len(raw_80dB_data) * 0.8)
-
-        sort_order = np.argsort(idx_list)
-        event_idx = idx_list[sort_order]
-        event_cls = cls_list[sort_order]
-
-        train_mask = event_idx < split_index
-        val_mask = event_idx >= split_index
-        # Event indexes
-        self.idx_list_train = event_idx[train_mask]
-        self.idx_list_val = event_idx[val_mask] - split_index  # shift for validation subset
-        # Corresponding labels
-        self.cls_list_train = event_cls[train_mask]
-        self.cls_list_val = event_cls[val_mask]
+class TrainingValidationData:
+    def __init__(self, raw_80dB_data, raw_unknown_data, target_id, idx_list, cls_list, fs=25000):
 
         # signal processing for the neuron data
-        # Spectral power degrade may be messing with cls?
-        # We just cant degrade for classification bro
-        # For now we will just train on d1 and try to bring everything up to its level of SNR
+        degraded_80dB_data = zscore(spectral_power_degrade(raw_80dB_data, raw_unknown_data, fs))
+        degraded_80dB_resynth_data = zscore(spectral_power_suppress(degraded_80dB_data, raw_80dB_data, fs))
+        if target_id == 5:
+            degraded_80dB_resynth_data = zscore(add_colored_noise(degraded_80dB_resynth_data, std=3))
+        elif target_id == 6:
+            degraded_80dB_resynth_data = zscore(add_colored_noise(degraded_80dB_resynth_data, std=5))
+        bp_wt_degraded_80dB_resynth_data = zscore(bandpass_neurons(degraded_80dB_resynth_data))
 
-        self.data_80dB_global_norm = np.array(self.norm_data(raw_80dB_data))
-        # split spikes for training
-        self.spike_windows_train = self.split_spike(
-            self.data_80dB_global_norm[:split_index], self.idx_list_train, self.cls_list_train)
-        self.spike_windows_val = self.split_spike(
-            self.data_80dB_global_norm[split_index:] , self.idx_list_val, self.cls_list_val)
+        self.data_proc = bp_wt_degraded_80dB_resynth_data
+        self.captures = self.split_spike(self.data_proc, idx_list, cls_list)
+        split_idx = int(0.8 * len(self.captures))
+
+        self.captures_train = self.captures[:split_idx]
+        self.captures_val = self.captures[split_idx:]
 
         """
         # Uncomment for examples
         max_per_class = 3
         class_counts = {}
-        for window in self.spike_windows_train:
+        for window in self.captures_train:
             cls = window["Classification"]
 
             # Initialize count if class hasn't appeared yet
@@ -72,22 +61,10 @@ class TrainingData:
                 class_counts[cls] += 1
         """
 
-
         # prep data loader
-        self.loader_t = self.prep_set_train(self.spike_windows_train)
-        self.loader_v = self.prep_set_train(self.spike_windows_val)
+        self.loader_t = self.prep_set_train(self.captures_train, shuffle=True)
+        self.loader_v = self.prep_set_train(self.captures_val, shuffle=False)
 
-    def norm_data(self, raw_data):
-        """
-        Norm raw_data between 1 and -1
-        centered about zero
-        """
-        ret_val = copy.deepcopy(raw_data)
-        raw_data_max = max(ret_val)
-        raw_data_min = min(ret_val)
-        ret_val = (2 * (ret_val - raw_data_min) /
-                   (raw_data_max - raw_data_min) - 1)
-        return ret_val
 
     def split_spike(self, dataset, idx_list, cls_list, capture_width=64, capture_weight=0.80):
         """
@@ -110,7 +87,7 @@ class TrainingData:
             })
         return captures_list_all
 
-    def prep_set_train(self, windows):
+    def prep_set_train(self, windows, shuffle):
         cap_list = [d["Capture"] for d in windows]
         cls_list = [d["Classification"] for d in windows]
 
@@ -121,33 +98,21 @@ class TrainingData:
         X_tensor = torch.tensor(X)
         y_tensor = torch.tensor(y)
         dataset = TensorDataset(X_tensor, y_tensor)
-        loader = DataLoader(dataset, batch_size=32, shuffle=True)
-
+        loader = DataLoader(dataset, batch_size=32, shuffle=True if shuffle else False)
         return loader
 
 
-class InferenceDataCls:
-    def __init__(self, raw_unknown_data, ref_clean_data, idx_list):
+class InferenceData:
+    def __init__(self, raw_unknown_data, raw_80dB_data, idx_list, fs=25_000):
 
         self.idx_list = idx_list
-        # prep data loader
-        raw_unknown_data_highpass = highpass_neurons(raw_unknown_data)
-        raw_unknown_data_highpass_boosted_snr = spectral_power_suppress(raw_unknown_data_highpass,
-                                                                        ref_clean_data, 25_000)
-        inf_windows = self.split_spike(self.norm_data(raw_unknown_data_highpass_boosted_snr))
-        self.loader_v = self.prep_set_inf(inf_windows)
 
-    def norm_data(self, raw_data):
-        """
-        Norm raw_data between 1 and -1
-        centered about zero
-        """
-        ret_val = copy.deepcopy(raw_data)
-        raw_data_max = max(ret_val)
-        raw_data_min = min(ret_val)
-        ret_val = (2 * (ret_val - raw_data_min) /
-                   (raw_data_max - raw_data_min) - 1)
-        return ret_val
+        spect_supress_data = zscore(spectral_power_suppress(raw_unknown_data, raw_80dB_data, fs))
+        bandpass_wt_spect_supress_data = zscore(bandpass_neurons(spect_supress_data))
+        self.data_proc = bandpass_wt_spect_supress_data
+
+        inf_windows = self.split_spike(self.data_proc)
+        self.loader_i = self.prep_set_inf(inf_windows)
 
     def split_spike(self, raw_unknown_data, capture_width=64, capture_weight=0.80):
         """
@@ -182,7 +147,7 @@ class InferenceDataCls:
 
         X_tensor = torch.tensor(X)
         dataset = TensorDataset(X_tensor)
-        loader = DataLoader(dataset, batch_size=32, shuffle=True)
+        loader = DataLoader(dataset, batch_size=32, shuffle=False)
 
         return loader
 

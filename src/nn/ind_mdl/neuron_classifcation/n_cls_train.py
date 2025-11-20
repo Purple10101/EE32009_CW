@@ -55,7 +55,7 @@ ground_cls_list = data1['Class'][0]
 
 target_data = data2['d'][0]
 
-training_set = TrainingData(ground_truth_data, ground_idx_list, ground_cls_list)
+training_set = TrainingValidationData(ground_truth_data, target_data, 2, ground_idx_list, ground_cls_list)
 
 
 print()
@@ -139,7 +139,7 @@ print()
 ########################################################################################################################
 
 torch.save(model.state_dict(),
-           "src/nn/ind_mdl/neuron_classifcation/models/20251118_cls_cnn_all.pt")
+           "src/nn/ind_mdl/neuron_classifcation/models/D2/20251120_cls_cnn_all.pt")
 
 print()
 

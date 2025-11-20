@@ -54,7 +54,13 @@ ground_cls_list = data1['Class'][0]
 
 target_data = data2['d'][0]
 
-training_set = TrainingData(ground_truth_data, ground_idx_list, ground_cls_list)
+training_set = TrainingValidationData(ground_truth_data, target_data, 2, ground_idx_list, ground_cls_list)
+
+import pickle
+with open("src/nn/ind_mdl/inference_pkl/D2.pkl", "rb") as f:
+    preds_loaded = pickle.load(f)
+
+inference_set = InferenceData(target_data, ground_truth_data, preds_loaded)
 
 print()
 ########################################################################################################################
@@ -63,7 +69,7 @@ print()
 
 model = NeuronCNN(5).to(device)
 model.load_state_dict(torch.load(
-    "src/nn/ind_mdl/neuron_classifcation/models/20251118_cls_cnn_all.pt"))
+    "src/nn/ind_mdl/neuron_classifcation/models/D2/20251120_cls_cnn_all.pt"))
 model.eval()
 
 print()
@@ -113,5 +119,22 @@ print()
 ########################################################################################################################
 # INFERENCE FORWARD PASS #
 ########################################################################################################################
+model_preds = []
+with torch.no_grad():
+    for batch in inference_set.loader_i:
+        # Unpack the batch
+        (X_batch,) = batch  # shape: (B, 2, T)
+        X_batch = X_batch.to(device)
+        logits = model(X_batch)
+        probs = F.softmax(logits, dim=1)
+
+        # Check each sample for low-confidence predictions
+        max_probs, _ = torch.max(probs, dim=1)
+        for i, p in enumerate(max_probs):
+            if p.item() < 0.3:
+                print(f"[Warning] Sample {i} in this batch has very low confidence: max prob = {p.item():.4f}")
+
+        preds = torch.argmax(probs, dim=1) + 1  # classes 1-5 not 0-4
+        model_preds.extend(preds.cpu().numpy())
 
 print()

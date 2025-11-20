@@ -253,7 +253,7 @@ def filter_wavelet(signal, fs=25000):
 
 def wt_test(dn_signal, d1_signal, fs=25000):
     # We like this pipeline
-    dn_ss = spectral_power_suppress(dn_signal, d1_signal, fs=fs, gain_scalr=1)
+    dn_ss = spectral_power_suppress(dn_signal, d1_signal, fs=fs)
     dn_ss_bandpass = bandpass_neurons(dn_ss, fs=fs)
     dn_ss_bandpass_wt = filter_wavelet(dn_ss_bandpass)
     x = np.arange(len(dn_signal))
@@ -262,9 +262,31 @@ def wt_test(dn_signal, d1_signal, fs=25000):
     plot_widow(dn_signal[-400_000:-390_000])
     print()
 
-def event_detection_train_pl(d1_signal):
-    # This will be like this
-    # Spectral degrade -> spectral supress -> bandpass -> wt
+def event_detection_train_pl(d1_signal, dn_signal, fs=25000):
+
+    d1_dn = zscore(spectral_power_degrade(d1_signal, dn_signal, fs))
+    d1_dn_d1 = zscore(spectral_power_suppress(d1_dn, d1_signal, fs))
+    d1_dn_d1_wt = zscore(filter_wavelet(d1_dn_d1))
+    d1_dn_d1_wt_added = zscore(add_colored_noise(d1_dn_d1_wt))
+    d1_dn_d1_wt_added_bp = zscore(bandpass_neurons(d1_dn_d1_wt_added))
+
+    dn_d1 = zscore(spectral_power_suppress(dn_signal, d1_signal, fs))
+    dn_d1_wt = zscore(filter_wavelet(dn_d1))
+    dn_d1_wt_bp = zscore(bandpass_neurons(dn_d1_wt))
+
+    x = np.arange(len(dn_signal))[-400_000:-380_000]
+    # Plot all in one figure
+    plt.figure(figsize=(10, 5))
+    plt.plot(x, dn_d1_wt_bp[-400_000:-380_000], label="signal DN on inference")
+    plt.plot(x, d1_dn_d1_wt_added_bp[-400_000:-380_000], label="Produced signal")
+
+    plt.legend()
+    plt.xlabel("x")
+    plt.ylabel("y")
+    plt.title("Event detection inf pipeline")
+    plt.grid(True)
+    plt.show(block=False)
+
     print()
 
 def event_detection_inf_pl(dn_signal, d1_signal, fs=25000):
@@ -278,11 +300,11 @@ def event_detection_inf_pl(dn_signal, d1_signal, fs=25000):
     # Plot all in one figure
     plt.figure(figsize=(10, 5))
 
-    plt.plot(x, norm_data(dn_signal)[-400_000:-390_000], label="Raw signal DN")
-    plt.plot(x, norm_data(bandpass_neurons(d1_signal))[-400_000:-390_000], label="Reference signal")
-    plt.plot(x, norm_data(dn_ss)[-400_000:-390_000], label="signal DN after spec suppression")
-    plt.plot(x, norm_data(dn_ss_bandpass)[-400_000:-390_000], label="signal DN after spec suppression and bandpass")
-    plt.plot(x, norm_data(dn_ss_bandpass_wt)[-400_000:-390_000], label="signal DN after spec suppression, bandpass, wt")
+    plt.plot(x, zscore(dn_signal)[-400_000:-390_000], label="Raw signal DN")
+    plt.plot(x, zscore(bandpass_neurons(d1_signal))[-400_000:-390_000], label="Reference signal")
+    plt.plot(x, zscore(dn_ss)[-400_000:-390_000], label="signal DN after spec suppression")
+    plt.plot(x, zscore(dn_ss_bandpass)[-400_000:-390_000], label="signal DN after spec suppression and bandpass")
+    plt.plot(x, zscore(dn_ss_bandpass_wt)[-400_000:-390_000], label="signal DN after spec suppression, bandpass, wt")
 
     plt.legend()
     plt.xlabel("x")
@@ -310,10 +332,11 @@ data4 = loadmat('data\D4.mat')
 data5 = loadmat('data\D5.mat')
 data6 = loadmat('data\D6.mat')
 
-data = data4['d'][0]
+data = data5['d'][0]
 data_ref = data1['d'][0]
 
 wt_test(data, data_ref)
+event_detection_train_pl(data_ref, data)
 event_detection_inf_pl(data, data_ref)
 
 
