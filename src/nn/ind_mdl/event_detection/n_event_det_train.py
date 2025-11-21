@@ -44,7 +44,10 @@ print(f"Using device: {device}")
 
 def train_set_specific_model(dataN,
                              dataset_id,
-                             model_name_conv):
+                             model_name_conv,
+                             window_interleave,
+                             widen_labels
+                             ):
 
     ####################################################################################################################
     # DATA #
@@ -57,7 +60,7 @@ def train_set_specific_model(dataN,
     data1_train = data1['d'][0][:split_index]
     data_unknown_train = dataN['d'][0][:split_index]
     idx_train = idx_bin[:split_index]
-    training_set = TrainingData(data1_train, data_unknown_train, idx_train, dataset_id)
+    training_set = TrainingData(data1_train, data_unknown_train, idx_train, dataset_id, window_interleave, widen_labels)
     #plot_sample_with_binary(training_set.data_proc[-11_000:], training_set.idx_ground_truth_bin[-11_000:])
 
     ####################################################################################################################
@@ -68,8 +71,8 @@ def train_set_specific_model(dataN,
     criterion = nn.BCELoss()
     optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
 
-    training_threshold = 0.7
-    num_epochs = 50
+    training_threshold = 0.6
+    num_epochs = 100
 
     ####################################################################################################################
     # TRAINING LOOP #
@@ -133,28 +136,31 @@ def train_set_specific_model(dataN,
     torch.save(model.state_dict(),
                f"src/nn/ind_mdl/event_detection/models/D{dataset_id}/{model_name_conv}.pt")
 
-"""
-Params Used:
-prev:  window_interleave=1, refractory=3
-D5:    window_interleave=5, refractory=10, label widening: width=3
-D6:    window_interleave=5, refractory=10, label widening: width=3
-"""
 
-data1 = loadmat('data\D1.mat')
-data2 = loadmat('data\D2.mat')
-data3 = loadmat('data\D3.mat')
-data4 = loadmat('data\D4.mat')
-data5 = loadmat('data\D5.mat')
-data6 = loadmat('data\D6.mat')
+if __name__ == "__main__":
 
-datasets = [data2, data3, data4, data5, data6]
-model_name = "20251121_neuron_event_det_cnn"
+    data1 = loadmat('data\D1.mat')
+    data2 = loadmat('data\D2.mat')
+    data3 = loadmat('data\D3.mat')
+    data4 = loadmat('data\D4.mat')
+    data5 = loadmat('data\D5.mat')
+    data6 = loadmat('data\D6.mat')
 
-for i, dataset in enumerate(datasets):
-    train_set_specific_model(dataN=dataset,
-                             dataset_id=i+2,
-                             model_name_conv=model_name
-                             )
+    #                    D2     D3     D4     D5     D6
+    datasets =          [data2, data3, data4, data5, data6]
+    window_interleave = [1,     1,     1,     3,     5]
+    widen_labels =      [5,     5,     5,     5,     5]
 
-print()
+    model_name = "20251121_neuron_event_det_cnn"
+
+    for i, dataset in enumerate(datasets):
+        print(f"Processing dataset {i+2}...")
+        train_set_specific_model(dataN=dataset,
+                                 dataset_id=i+2,
+                                 model_name_conv=model_name,
+                                 window_interleave=window_interleave[i],
+                                 widen_labels=widen_labels[i]
+                                 )
+
+    print()
 

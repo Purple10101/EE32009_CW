@@ -25,7 +25,11 @@ from src.nn.ind_mdl.noise_suppression.noise_suppression_utils import *
 
 
 class TrainingData:
-    def __init__(self, raw_80dB_data, raw_unknown_data, idx_bin, target_id, fs=25000):
+    def __init__(self, raw_80dB_data, raw_unknown_data, idx_bin, target_id, window_interleave, widen_labels, fs=25000):
+
+        # hyperparameters
+        self.window_interleave = window_interleave
+        self.widen_labels_val = widen_labels
 
         # index logic
         self.idx_ground_truth_bin = idx_bin
@@ -51,22 +55,29 @@ class TrainingData:
         self.dataset_t = TensorDataset(X_tensors, y_tensors)
         self.loader_t = DataLoader(self.dataset_t, batch_size=64, shuffle=True)
 
-    def widen_labels(self, width=3):
+    def widen_labels(self):
         """
         Expand binary 1s in a 1D label array by ±width samples.
         We have decided that 5 is the best balance between learnability
         and the models ability to detect stacked spikes.
+
+        maybe unnecessary
         """
         expanded = np.zeros_like(self.idx_ground_truth_bin)
         idx = np.where(self.idx_ground_truth_bin == 1)[0]
         for i in idx:
-            start = max(0, i - width)
-            end = min(len(self.idx_ground_truth_bin), i + width + 1)
+            start = max(0, i - self.widen_labels_val)
+            end = min(len(self.idx_ground_truth_bin), i + self.widen_labels_val + 1)
             expanded[start:end] = 1
         return expanded
 
-    def prep_set_train(self, data, labels, window_size=128, stride=1, window_interleave=5):
+    def prep_set_train(self, data, labels, window_size=128, stride=1):
         """
+        maybe simplify this...
+        Hard and soft snapshot?
+
+        include less nose, you have 50-50 rn
+
         Package the series and indexes into tensors with respect to the
         required window size and stride length.
 
@@ -75,7 +86,7 @@ class TrainingData:
         X, y = [], []
         np_lables_no_exp = np.array(self.idx_ground_truth_bin)
         noise_c = 0
-        num_random_positions = 4
+        num_random_positions = 1
 
         for i in range(0, len(data) - window_size, stride):
             # for each spike we want window_interleave windows of noise
@@ -86,10 +97,10 @@ class TrainingData:
                 # find spike index inside global labels
                 spike_global_idx = i + center
 
-                # generate 4 random spike positions inside window
+                # generate 1 random spike positions inside window
                 random_positions = np.random.randint(
-                    low=int(window_size * 0.2),
-                    high=int(window_size * 0.8),
+                    low=int(window_size * 0.4),
+                    high=int(window_size * 0.6),
                     size=num_random_positions
                 )
                 for pos in random_positions:
@@ -100,7 +111,7 @@ class TrainingData:
                     y.append(labels[new_i:new_i + window_size])
                 # plot_sample_with_binary(data_re_norm, labels[i:i + window_size])
                 noise_c = 0
-            elif np_lables_no_exp[i - window_size:i + window_size].mean() == 0 and noise_c < window_interleave:
+            elif np_lables_no_exp[i - window_size:i + window_size].mean() == 0 and noise_c < self.window_interleave:
                 X.append(data_re_norm)
                 y.append(labels[i:i + window_size])
                 # plot_sample_with_binary(data_re_norm, labels[i:i + window_size])

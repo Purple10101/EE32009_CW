@@ -226,26 +226,6 @@ def spectral_power_degrade(clean, noisy, fs, nperseg=2048):
 
     return degraded
 
-def filter_wavelet(signal, fs=25000):
-    import pywt
-    # High-pass filter to remove slow drift
-    # This is only present in the final two datasets I think
-    nyq = 0.5 * fs
-    b, a = butter(3,   10 / nyq, btype='high')
-    signal_hp = filtfilt(b, a, signal)
-
-    # Wavelet denoising
-    wavelet = 'db4'
-    coeffs = pywt.wavedec(signal_hp, wavelet, level=5)
-
-    sigma = np.median(np.abs(coeffs[-1])) / 0.6745
-    uthresh = 0.7 * sigma * np.sqrt(2 * np.log(len(signal_hp))) # tuned 0.7 try other else
-
-    coeffs_thresh = [pywt.threshold(c, value=uthresh, mode='soft') for c in coeffs]
-    clean_wavelet = pywt.waverec(coeffs_thresh, wavelet)
-
-    return clean_wavelet
-
 ########################################################################################################################
 # OPERATION CHAIN FUNCTIONS #
 ########################################################################################################################
@@ -268,18 +248,18 @@ def event_detection_train_pl(d1_signal, dn_signal, fs=25000):
     d1_dn_d1 = zscore(spectral_power_suppress(d1_dn, d1_signal, fs))
     d1_dn_d1_wt = zscore(filter_wavelet(d1_dn_d1))
     # for D5 std=3, D6 std=5 else dont perform this step
-    d1_dn_d1_wt_added = zscore(add_colored_noise(d1_dn_d1_wt, std=3))
-    d1_dn_d1_wt_added_bp = zscore(bandpass_neurons(d1_dn_d1_wt_added))
+    #d1_dn_d1_wt_added = zscore(add_colored_noise(d1_dn_d1_wt, std=5))
+    d1_dn_d1_wt_added_bp = zscore(bandpass_neurons(d1_dn_d1_wt))
 
     dn_d1 = zscore(spectral_power_suppress(dn_signal, d1_signal, fs))
     dn_d1_wt = zscore(filter_wavelet(dn_d1))
     dn_d1_wt_bp = zscore(bandpass_neurons(dn_d1_wt))
 
-    x = np.arange(len(dn_signal))[-400_000:-350_000]
+    x = np.arange(len(dn_signal))
     # Plot all in one figure
     plt.figure(figsize=(13, 5))
-    plt.plot(x, dn_d1_wt_bp[-400_000:-350_000], label="signal DN on inference")
-    plt.plot(x, d1_dn_d1_wt_added_bp[-400_000:-350_000], label="Produced signal")
+    plt.plot(x, dn_d1_wt_bp, label="signal DN on inference")
+    plt.plot(x, d1_dn_d1_wt_added_bp, label="Produced signal")
 
     plt.legend()
     plt.xlabel("x")
@@ -333,7 +313,7 @@ data4 = loadmat('data\D4.mat')
 data5 = loadmat('data\D5.mat')
 data6 = loadmat('data\D6.mat')
 
-data = data5['d'][0]
+data = data3['d'][0]
 data_ref = data1['d'][0]
 
 wt_test(data, data_ref)

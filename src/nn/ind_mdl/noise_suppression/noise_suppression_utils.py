@@ -254,20 +254,85 @@ def spectral_power_degrade(clean, noisy, fs, nperseg=2048):
 
     return degraded
 
-def filter_wavelet(signal, thresh_scale=1.2):
-    import pywt
-    # Wavelet decomposition
-    wavelet = 'db4'
-    level = 4
-    coeffs = pywt.wavedec(signal, wavelet, level=level)
+
+
+
+
+
+# Maximum possible levels for Haar DWT on length-n signal
+def _max_haar_level(n):
+    import math
+    return int(math.floor(math.log2(max(1, n))))
+
+
+# Simple thresholding function
+def threshold(data, value):
+    x = np.asarray(data, float)
+    mask = np.abs(x) > value
+    return x * mask
+
+# Multi-level 1D Haar DWT -  mimicking pywt.wavedec.
+def wavedec(x):
+    """
+    Multi-level 1D Haar discrete wavelet decomposition.
+
+    Returns a list of coefficient arrays in PyWavelets ordering: [cA_L, cD_L, ..., cD_1].
+
+    The input signal is converted to float and repeatedly split into even/odd samples.
+    At each level the low-pass (approximation) and high-pass (detail) Haar coefficients are computed as (even+odd)/sqrt(2) and (even-odd)/sqrt(2) respectively.
+    If a level's length is odd it is padded by repeating the last sample (edge padding) so pairs are complete.
+    The number of levels is the maximum possible for the input length (floor(log2(n))).
+    """
+    a = np.asarray(x, float).copy()
+    level = _max_haar_level(a.size)
+    details = []
+    for _ in range(level):
+        if a.size % 2:
+            a = np.pad(a, (0, 1), mode="edge")
+        even, odd = a[0::2], a[1::2]
+        details.append((even - odd) / np.sqrt(2.0))
+        a = (even + odd) / np.sqrt(2.0)
+    return [a] + details[::-1]
+
+
+# Inverse multi-level 1D Haar DWT - mimicking pywt.waverec.
+def waverec(coeffs):
+    """
+    Inverse multi-level 1D Haar discrete wavelet reconstruction.
+    This function reconstructs an approximation of the original signal from its Haar wavelet coefficients.
+    It starts at the coarsest level approximation and iteratively upsamples and combines it with the detail coefficients from each level.
+    coeffs = [cA_L, cD_L, ..., cD_1]
+    """
+    approx = np.asarray(coeffs[0], float)
+
+    for cD in coeffs[1:]:
+        cD = np.asarray(cD, float)
+        m = min(approx.size, cD.size)
+
+        # Inverse Haar: even = (a + d)/sqrt(2), odd = (a - d)/sqrt(2)
+        # Interleave even and odd samples
+        rec = np.empty(2 * m, dtype=float)
+        rec[0::2] = (approx[:m] + cD[:m])
+        rec[1::2] = (approx[:m] - cD[:m])
+        approx = rec / np.sqrt(2.0)
+
+    return approx
+
+
+
+def filter_wavelet(signal):
+    """
+    Rewrtie this code, maybe look into what about pywt
+    :param signal:
+    :param thresh_scale:
+    :return:
+    """
+    coeffs = wavedec(signal)
     detail_finest = coeffs[-1]
-    sigma = np.median(np.abs(detail_finest)) / 0.6745
-    uthr = thresh_scale * sigma * np.sqrt(2 * np.log(len(signal)))
-    new_coeffs = [coeffs[0]]
-    for d in coeffs[1:]:
-        new_coeffs.append(pywt.threshold(d, uthr, mode="hard"))
-    y = pywt.waverec(new_coeffs, wavelet)
-    return y[: len(signal)]
+    sigma = (np.median(np.abs(detail_finest)) / 0.6745) if detail_finest.size else 0.0
+    uthr = 1.2 * sigma * np.sqrt(2 * np.log(signal.size)) if sigma else 0.0
+    coeffs = [coeffs[0]] + [threshold(d, uthr) for d in coeffs[1:]]
+    return waverec(coeffs)[:signal.size]
 
 def bandpass_neurons(signal, fs=25_000, f_low=3, f_high=2_000):
     n = len(signal)
