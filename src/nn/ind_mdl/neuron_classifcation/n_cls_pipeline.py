@@ -82,20 +82,21 @@ def cls_forward_pass(dataN,
 
     print(f"Saved src/nn/ind_mdl/neuron_classifcation/outputs/D{dataset_id}.pkl")
 
+if __name__ == "__main__":
 
-data1 = loadmat('data\D1.mat')
-data2 = loadmat('data\D2.mat')
-data3 = loadmat('data\D3.mat')
-data4 = loadmat('data\D4.mat')
-data5 = loadmat('data\D5.mat')
-data6 = loadmat('data\D6.mat')
+    data1 = loadmat('data\D1.mat')
+    data2 = loadmat('data\D2.mat')
+    data3 = loadmat('data\D3.mat')
+    data4 = loadmat('data\D4.mat')
+    data5 = loadmat('data\D5.mat')
+    data6 = loadmat('data\D6.mat')
 
-datasets = [data2, data3, data4, data5, data6]
-model_name = "20251121_neuron_event_det_cnn"
+    datasets = [data2, data3, data4, data5, data6]
+    model_name = "20251121_neuron_event_det_cnn"
 
-for i, dataset in enumerate(datasets):
-    print(f"Processing dataset {i+2}...")
-    cls_forward_pass(dataN=dataset,
-                                 dataset_id=i+2,
-                                 model_name_conv=model_name
-                                 )
+    for i, dataset in enumerate(datasets):
+        print(f"Processing dataset {i+2}...")
+        cls_forward_pass(dataN=dataset,
+                                     dataset_id=i+2,
+                                     model_name_conv=model_name
+                                     )

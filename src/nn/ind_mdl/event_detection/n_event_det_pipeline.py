@@ -107,32 +107,33 @@ D6 = 3609 vs true 3911 # colored noise with sd=5, th = 0.85
 latest outputs = [3382, 2915, 2884, 2521, 3486]
 """
 
-data1 = loadmat('data\D1.mat')
-data2 = loadmat('data\D2.mat')
-data3 = loadmat('data\D3.mat')
-data4 = loadmat('data\D4.mat')
-data5 = loadmat('data\D5.mat')
-data6 = loadmat('data\D6.mat')
+if __name__ == "__main__":
 
-datasets = [data2, data3, data4, data5, data6]
-model_name = "20251121_neuron_event_det_cnn"
+    data1 = loadmat('data\D1.mat')
+    data2 = loadmat('data\D2.mat')
+    data3 = loadmat('data\D3.mat')
+    data4 = loadmat('data\D4.mat')
+    data5 = loadmat('data\D5.mat')
+    data6 = loadmat('data\D6.mat')
 
-# some dataset wise hyperparams
-#               D2   D3   D4   D5   D6
-thresholds =   [0.9, 0.9, 0.9, 0.9, 0.85]
-refractories = [3,   3,   3,   10,  10]
+    datasets = [data2, data3, data4, data5, data6]
+    model_name = "20251121_neuron_event_det_cnn"
 
-num_spikes = []
+    # some dataset wise hyperparams
+    #               D2   D3   D4   D5   D6
+    thresholds =   [0.9, 0.9, 0.9, 0.9, 0.85]
+    refractories = [3,   3,   3,   10,  10]
 
-
-for i, dataset in enumerate(datasets):
-    print(f"Processing dataset {i+2}...")
-    x, _ = event_detection_forward_pass(dataN=dataset,
-                                        dataset_id=i+2,
-                                        model_name_conv=model_name,
-                                        threshold=thresholds[i],
-                                        refractory=refractories[i])
-    num_spikes.append(x)
+    num_spikes = []
 
 
-print(num_spikes)
+    for i, dataset in enumerate(datasets):
+        print(f"Processing dataset {i+2}...")
+        x, _ = event_detection_forward_pass(dataN=dataset,
+                                            dataset_id=i+2,
+                                            model_name_conv=model_name,
+                                            threshold=thresholds[i],
+                                            refractory=refractories[i])
+        num_spikes.append(x)
+
+    print(num_spikes)
