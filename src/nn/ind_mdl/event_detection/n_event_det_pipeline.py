@@ -93,7 +93,7 @@ def event_detection_forward_pass(dataN,
         pickle.dump(output_indexes, f)
 
     print(f"Saved src/nn/ind_mdl/event_detection/outputs/D{dataset_id}.pkl")
-    return len([x for x in preds if x != 0])
+    return len([x for x in preds if x != 0]), inf_set.data_proc
 
 """
 Prediction counts for all datasets
@@ -127,11 +127,12 @@ num_spikes = []
 
 for i, dataset in enumerate(datasets):
     print(f"Processing dataset {i+2}...")
-    num_spikes.append(event_detection_forward_pass(dataN=dataset,
-                                                   dataset_id=i+2,
-                                                   model_name_conv=model_name,
-                                                   threshold=thresholds[i],
-                                                   refractory=refractories[i])
-                      )
+    x, _ = event_detection_forward_pass(dataN=dataset,
+                                        dataset_id=i+2,
+                                        model_name_conv=model_name,
+                                        threshold=thresholds[i],
+                                        refractory=refractories[i])
+    num_spikes.append(x)
+
 
 print(num_spikes)
