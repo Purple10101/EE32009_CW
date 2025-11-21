@@ -267,18 +267,19 @@ def event_detection_train_pl(d1_signal, dn_signal, fs=25000):
     d1_dn = zscore(spectral_power_degrade(d1_signal, dn_signal, fs))
     d1_dn_d1 = zscore(spectral_power_suppress(d1_dn, d1_signal, fs))
     d1_dn_d1_wt = zscore(filter_wavelet(d1_dn_d1))
-    d1_dn_d1_wt_added = zscore(add_colored_noise(d1_dn_d1_wt))
+    # for D5 std=3, D6 std=5 else dont perform this step
+    d1_dn_d1_wt_added = zscore(add_colored_noise(d1_dn_d1_wt, std=3))
     d1_dn_d1_wt_added_bp = zscore(bandpass_neurons(d1_dn_d1_wt_added))
 
     dn_d1 = zscore(spectral_power_suppress(dn_signal, d1_signal, fs))
     dn_d1_wt = zscore(filter_wavelet(dn_d1))
     dn_d1_wt_bp = zscore(bandpass_neurons(dn_d1_wt))
 
-    x = np.arange(len(dn_signal))[-400_000:-380_000]
+    x = np.arange(len(dn_signal))[-400_000:-350_000]
     # Plot all in one figure
-    plt.figure(figsize=(10, 5))
-    plt.plot(x, dn_d1_wt_bp[-400_000:-380_000], label="signal DN on inference")
-    plt.plot(x, d1_dn_d1_wt_added_bp[-400_000:-380_000], label="Produced signal")
+    plt.figure(figsize=(13, 5))
+    plt.plot(x, dn_d1_wt_bp[-400_000:-350_000], label="signal DN on inference")
+    plt.plot(x, d1_dn_d1_wt_added_bp[-400_000:-350_000], label="Produced signal")
 
     plt.legend()
     plt.xlabel("x")
