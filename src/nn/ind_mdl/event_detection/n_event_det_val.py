@@ -19,6 +19,7 @@
 from scipy.io import loadmat
 
 from src.nn.ind_mdl.event_detection.n_event_det_data_prep import *
+from src.nn.ind_mdl.event_detection.n_event_det_sig_proc_pk import *
 from src.nn.ind_mdl.event_detection.n_event_det_1d_cnn import SpikeNet
 
 dir_name = "EE32009_CW"
@@ -54,7 +55,7 @@ split_index = int(len(data1['d'][0]) * 0.8)
 
 data1_val = data1['d'][0][split_index:]
 # we need d2 to be the same size so unfortunately we lose some resolution
-data_unknown_val = data2['d'][0][split_index:]
+data_unknown_val = data5['d'][0][split_index:]
 idx_train = idx_bin[split_index:]
 
 val_set = ValidationData(data1_val, data_unknown_val, idx_train, 2)
@@ -63,7 +64,7 @@ plot_sample_with_binary(val_set.data_proc, val_set.idx_ground_truth_bin)
 
 # now prep the d2 set for total inference.
 
-data_inf = data2['d'][0]
+data_inf = data5['d'][0]
 
 inf_set = InferenceDataEvntDet(data_inf, data1['d'][0])
 
@@ -74,7 +75,7 @@ print()
 
 model = SpikeNet().to(device)
 model.load_state_dict(torch.load(
-    "src/nn/ind_mdl/event_detection/models/D2/20251120_neuron_event_det_cnn.pt"))
+    "src/nn/ind_mdl/event_detection/models/D5/20251120_neuron_event_det_cnn.pt"))
 model.eval()
 
 print()
@@ -110,6 +111,22 @@ print(len([x for x in preds if x != 0]))
 plot_sample_with_binary(val_set.data_proc[-11000:], preds[-11000:])
 
 metrics = tolerant_binary_metrics(preds, val_set.idx_ground_truth_bin, tol=50)
+print(f"Accuracy:  {metrics['accuracy']:.3f}")
+print(f"Precision: {metrics['precision']:.3f}")
+print(f"Recall:    {metrics['recall']:.3f}")
+print(f"F1:        {metrics['f1']:.3f}")
+print(f"TP: {metrics['TP']}, FP: {metrics['FP']}, FN: {metrics['FN']}")
+print(f"Zero agreement: {metrics['zero_agreement']:.3f}")
+
+
+# now use the peak detector from sign processing
+predicted_indexes = peak_detection(val_set.data_proc)
+predicted_indexes_bin = np.isin(np.arange(val_set.data_proc.shape[0]), predicted_indexes).astype(int)
+
+predicted_indexes_dn = peak_detection(inf_set.data_proc)
+# this predicts 3163 spikes for D6 and 2212 for D5
+
+metrics = tolerant_binary_metrics(predicted_indexes_bin, val_set.idx_ground_truth_bin, tol=50)
 print(f"Accuracy:  {metrics['accuracy']:.3f}")
 print(f"Precision: {metrics['precision']:.3f}")
 print(f"Recall:    {metrics['recall']:.3f}")
