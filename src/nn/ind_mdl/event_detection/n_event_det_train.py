@@ -151,7 +151,7 @@ if __name__ == "__main__":
     window_interleave = [1,     1,     1,     3,     5]
     widen_labels =      [5,     5,     5,     5,     5]
 
-    model_name = "20251121_neuron_event_det_cnn"
+    model_name = "20251123_neuron_event_det_cnn"
 
     for i, dataset in enumerate(datasets):
         print(f"Processing dataset {i+2}...")

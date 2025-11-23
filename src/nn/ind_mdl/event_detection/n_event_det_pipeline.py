@@ -125,7 +125,7 @@ if __name__ == "__main__":
     data6 = loadmat('data\D6.mat')
 
     datasets = [data2, data3, data4, data5, data6]
-    model_name = "20251121_neuron_event_det_cnn"
+    model_name = "20251123_neuron_event_det_cnn"
 
     # some dataset wise hyperparams
     #               D2   D3   D4   D5   D6

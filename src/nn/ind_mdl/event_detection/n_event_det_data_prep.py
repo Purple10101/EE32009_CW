@@ -209,7 +209,7 @@ class ValidationData:
         X, y = [], []
         index_map = []
         for i in range(0, len(data) - window_size, stride):
-            data_re_norm = data[i:i + window_size]
+            data_re_norm = norm_data(data[i:i + window_size])
             X.append(data_re_norm)
             y.append(labels[i:i + window_size])
             index_map.append(np.arange(i, i + window_size))
