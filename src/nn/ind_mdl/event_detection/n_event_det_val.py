@@ -55,16 +55,22 @@ split_index = int(len(data1['d'][0]) * 0.8)
 
 data1_val = data1['d'][0][split_index:]
 # we need d2 to be the same size so unfortunately we lose some resolution
-data_unknown_val = data5['d'][0][split_index:]
-idx_train = idx_bin[split_index:]
+data_unknown_val = data6['d'][0][split_index:]
+idx_bin_val = idx_bin[split_index:]
+idx_list_val = np.where(idx_bin_val == 1)[0]
 
-val_set = ValidationData(data1_val, data_unknown_val, idx_train, 2)
+val_set = ValidationData(raw_80dB_data=data1_val,
+                         raw_unknown_data=data_unknown_val,
+                         idx_list=idx_list_val,
+                         idx_bin=idx_bin_val,
+                         target_id=6,
+                         widen_labels=1)
 
 plot_sample_with_binary(val_set.data_proc, val_set.idx_ground_truth_bin)
 
 # now prep the d2 set for total inference.
 
-data_inf = data5['d'][0]
+data_inf = data6['d'][0]
 
 inf_set = InferenceDataEvntDet(data_inf, data1['d'][0])
 
@@ -75,8 +81,10 @@ print()
 
 model = SpikeNet().to(device)
 model.load_state_dict(torch.load(
-    "src/nn/ind_mdl/event_detection/models/D5/20251120_neuron_event_det_cnn.pt"))
+    f"src/nn/ind_mdl/event_detection/models/D6/20251121_neuron_event_det_cnn.pt"))
 model.eval()
+
+threshold = 0.9
 
 print()
 ########################################################################################################################
@@ -85,32 +93,27 @@ print()
 
 # Do forward pass on the _val data using the index map to
 # reconstruct the predictions
-all_outputs = []
-with torch.no_grad():  # disables gradient computation (saves memory)
+all_preds = []
+with torch.no_grad():
     for X_batch, _ in val_set.loader_v:
         X_batch = X_batch.to(device)
-        output = model(X_batch)  # shape: (batch_size, 1, window_size) or (batch_size, window_size)
-        output = output.squeeze(1).cpu().numpy()  # shape: (batch_size, window_size)
-        all_outputs.append(output)
+        output = model(X_batch)
+        probs = torch.sigmoid(output)
+        preds = (probs > threshold).float().squeeze(1).cpu().numpy()
+        all_preds.append(preds)
 
-# Stack all batches back together
-outputs_v = np.concatenate(all_outputs, axis=0)  # (num_windows, window_size)
-# construct our outputs list
-n_total = len(val_set.data_proc)
-final_probs = np.zeros(n_total)
-counts = np.zeros(n_total)
+outputs_v = np.concatenate(all_preds, axis=0)  # (num_windows, window_size)
+N = len(val_set.data_proc)
+binary_spikes = np.zeros(N, dtype=int)
 
-for i in range(outputs_v.shape[0]):
-    final_probs[val_set.index_map[i]] += outputs_v[i]
-    counts[val_set.index_map[i]] += 1
+for idx, pred in zip(val_set.indices, outputs_v):
+    if pred == 1:
+        binary_spikes[int(idx)] = 1
 
-# Average overlapping predictions
-final_probs /= np.maximum(counts, 1)
-preds = nonmax_rejection(final_probs, 0.9)
-print(len([x for x in preds if x != 0]))
-plot_sample_with_binary(val_set.data_proc[-11000:], preds[-11000:])
+print(len([x for x in binary_spikes if x != 0]))
+plot_sample_with_binary(val_set.data_proc, binary_spikes)
 
-metrics = tolerant_binary_metrics(preds, val_set.idx_ground_truth_bin, tol=50)
+metrics = tolerant_binary_metrics(binary_spikes, val_set.idx_ground_truth_bin, tol=50)
 print(f"Accuracy:  {metrics['accuracy']:.3f}")
 print(f"Precision: {metrics['precision']:.3f}")
 print(f"Recall:    {metrics['recall']:.3f}")
@@ -124,7 +127,7 @@ predicted_indexes = peak_detection(val_set.data_proc)
 predicted_indexes_bin = np.isin(np.arange(val_set.data_proc.shape[0]), predicted_indexes).astype(int)
 
 predicted_indexes_dn = peak_detection(inf_set.data_proc)
-# this predicts 3163 spikes for D6 and 2212 for D5
+# this predicts 3853 for D6
 
 metrics = tolerant_binary_metrics(predicted_indexes_bin, val_set.idx_ground_truth_bin, tol=50)
 print(f"Accuracy:  {metrics['accuracy']:.3f}")
@@ -150,32 +153,22 @@ print()
 
 # Do forward pass on the _inf data using the index map to
 # reconstruct the predictions
-all_outputs = []
-with torch.no_grad():  # disables gradient computation (saves memory)
-    for X_batch, in inf_set.loader_i:
-        X_batch = X_batch.to(device)
-        output = model(X_batch)  # shape: (batch_size, 1, window_size) or (batch_size, window_size)
-        output = output.squeeze(1).cpu().numpy()  # shape: (batch_size, window_size)
-        all_outputs.append(output)
+all_probs = []
+with torch.no_grad():
+    for X_batch in inf_set.loader_i:
+        X_batch = X_batch[0].to(device)
+        logits = model(X_batch)
+        probs = torch.sigmoid(logits).cpu().numpy().flatten()
+        all_probs.extend(probs)
 
-# Stack all batches back together
-outputs_i = np.concatenate(all_outputs, axis=0)  # (num_windows, window_size)
-# construct our outputs list
-n_total = len(data_inf)
-final_probs = np.zeros(n_total)
-counts = np.zeros(n_total)
+probs_full = np.zeros(len(inf_set.data_proc))
+probs_full[inf_set.index_map] = all_probs
 
-for i in range(outputs_i.shape[0]):
-    final_probs[inf_set.index_map[i]] += outputs_i[i]
-    counts[inf_set.index_map[i]] += 1
+binary_spikes = nms(probs_full, threshold=0.9, refractory=5)
+spikes = np.where(binary_spikes == 1)[0]
 
-# Average overlapping predictions
-final_probs /= np.maximum(counts, 1)
-
-preds = nonmax_rejection(final_probs, 0.9, refractory=3)
-print(len([x for x in preds if x != 0]))
-plot_sample_with_binary(data_inf[-11000:], preds[-11000:])
-plot_sample_with_binary(inf_set.data_proc[-11000:], preds[-11000:])
+print(len(spikes))
+plot_sample_with_binary(inf_set.data_proc, binary_spikes)
 
 import pickle
 with open("src/nn/ind_mdl/inference_pkl/D2.pkl", "wb") as f:

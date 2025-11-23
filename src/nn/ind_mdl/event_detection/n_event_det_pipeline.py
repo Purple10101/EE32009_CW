@@ -61,39 +61,36 @@ def event_detection_forward_pass(dataN,
 
     # Do forward pass on the _inf data using the index map to
     # reconstruct the predictions
-    all_outputs = []
-    with torch.no_grad():  # disables gradient computation (saves memory)
-        for X_batch, in inf_set.loader_i:
-            X_batch = X_batch.to(device)
-            output = model(X_batch)  # shape: (batch_size, 1, window_size) or (batch_size, window_size)
-            output = output.squeeze(1).cpu().numpy()  # shape: (batch_size, window_size)
-            all_outputs.append(output)
+    all_probs = []
+    with torch.no_grad():
+        for X_batch in inf_set.loader_i:
+            X_batch = X_batch[0].to(device)
+            logits = model(X_batch)
+            probs = torch.sigmoid(logits).cpu().numpy().flatten()
+            all_probs.extend(probs)
 
-    # Stack all batches back together
-    outputs_i = np.concatenate(all_outputs, axis=0)  # (num_windows, window_size)
-    # construct our outputs list
-    n_total = len(data_inf)
-    final_probs = np.zeros(n_total)
-    counts = np.zeros(n_total)
+    probs_full = np.zeros(len(inf_set.data_proc))
+    probs_full[inf_set.index_map] = all_probs
 
-    for i in range(outputs_i.shape[0]):
-        final_probs[inf_set.index_map[i]] += outputs_i[i]
-        counts[inf_set.index_map[i]] += 1
-
-    # Average overlapping predictions
-    final_probs /= np.maximum(counts, 1)
-
-    preds = nonmax_rejection(final_probs, threshold, refractory=refractory)
-    plot_sample_with_binary(data_inf[-11000:], preds[-11000:])
-    plot_sample_with_binary(inf_set.data_proc[-11000:], preds[-11000:])
+    binary_spikes = nms(probs_full, threshold=threshold, refractory=refractory)
+    spikes = np.where(binary_spikes == 1)[0]
 
     import pickle
     with open(f"src/nn/ind_mdl/event_detection/outputs/D{dataset_id}.pkl", "wb") as f:
-        output_indexes = np.where(preds == 1)[0]
-        pickle.dump(output_indexes, f)
+        pickle.dump(spikes, f)
 
+    known = known_values[dataset_id-2]
+    inf = len(spikes)
+    print("-------------------")
+    print(f"Number of spikes:        {inf}")
+    print(f"Absolute max recall:     {inf/known if inf<known else 1 }")
+    print(f"Absolute max precision:  {known/inf if known<inf else 1 }")
     print(f"Saved src/nn/ind_mdl/event_detection/outputs/D{dataset_id}.pkl")
-    return len([x for x in preds if x != 0]), inf_set.data_proc
+    print("-------------------\n")
+
+
+
+    return len(spikes), inf_set.data_proc
 
 """
 Prediction counts for all datasets
@@ -120,9 +117,10 @@ if __name__ == "__main__":
     model_name = "20251121_neuron_event_det_cnn"
 
     # some dataset wise hyperparams
-    #               D2   D3   D4   D5   D6
-    thresholds =   [0.9, 0.9, 0.9, 0.9, 0.85]
-    refractories = [3,   3,   3,   10,  10]
+    #                  D2    D3    D4    D5    D6
+    thresholds =      [0.9,  0.9,  0.9,  0.9,  0.9]
+    nms_refactory =   [5,    5,    5,    5,    5]
+    known_values =    [3985, 3327, 3031, 2582, 3911]
 
     num_spikes = []
 
@@ -133,7 +131,7 @@ if __name__ == "__main__":
                                             dataset_id=i+2,
                                             model_name_conv=model_name,
                                             threshold=thresholds[i],
-                                            refractory=refractories[i])
+                                            refractory=nms_refactory[i])
         num_spikes.append(x)
 
     print(num_spikes)

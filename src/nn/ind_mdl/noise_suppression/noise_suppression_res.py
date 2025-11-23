@@ -271,7 +271,7 @@ def event_detection_train_pl(d1_signal, dn_signal, fs=25000):
     print()
 
 def event_detection_inf_pl(dn_signal, d1_signal, fs=25000):
-    dn_ss = spectral_power_suppress(dn_signal, d1_signal, fs=fs, gain_scalr=1)
+    dn_ss = spectral_power_suppress(dn_signal, d1_signal, fs=fs)
     dn_ss_bandpass = bandpass_neurons(dn_ss, fs=fs)
     dn_ss_bandpass_wt = filter_wavelet(dn_ss_bandpass) #  this will be inference data
 
@@ -313,7 +313,7 @@ data4 = loadmat('data\D4.mat')
 data5 = loadmat('data\D5.mat')
 data6 = loadmat('data\D6.mat')
 
-data = data3['d'][0]
+data = data4['d'][0]
 data_ref = data1['d'][0]
 
 wt_test(data, data_ref)

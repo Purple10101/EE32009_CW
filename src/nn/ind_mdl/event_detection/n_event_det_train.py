@@ -45,7 +45,6 @@ print(f"Using device: {device}")
 def train_set_specific_model(dataN,
                              dataset_id,
                              model_name_conv,
-                             window_interleave,
                              widen_labels
                              ):
 
@@ -59,8 +58,14 @@ def train_set_specific_model(dataN,
     split_index = int(len(data1['d'][0]) * 0.8)
     data1_train = data1['d'][0][:split_index]
     data_unknown_train = dataN['d'][0][:split_index]
-    idx_train = idx_bin[:split_index]
-    training_set = TrainingData(data1_train, data_unknown_train, idx_train, dataset_id, window_interleave, widen_labels)
+    idx_bin_train = idx_bin[:split_index]
+    idx_list_train = np.where(idx_bin_train == 1)[0]
+    training_set = TrainingData(raw_80dB_data=data1_train,
+                                raw_unknown_data=data_unknown_train,
+                                idx_list=idx_list_train,
+                                idx_bin=idx_bin_train,
+                                target_id=dataset_id,
+                                widen_labels=widen_labels)
     #plot_sample_with_binary(training_set.data_proc[-11_000:], training_set.idx_ground_truth_bin[-11_000:])
 
     ####################################################################################################################
@@ -68,11 +73,13 @@ def train_set_specific_model(dataN,
     ####################################################################################################################
 
     model = SpikeNet().to(device)
-    criterion = nn.BCELoss()
+    #criterion = nn.BCELoss()
+    pos_weight = 3.0  # higher means recall up, precision down
+    criterion = nn.BCEWithLogitsLoss(pos_weight=torch.tensor([pos_weight]).to(device))
     optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
 
-    training_threshold = 0.6
-    num_epochs = 100
+    training_threshold = 0.7
+    num_epochs = 200
 
     ####################################################################################################################
     # TRAINING LOOP #
@@ -85,23 +92,19 @@ def train_set_specific_model(dataN,
         y_true_train, y_pred_train = [], []
 
         for X_batch, y_batch in training_set.loader_t:
-            try:
-                X_batch, y_batch = X_batch.to(device), y_batch.to(device)
-
-                optimizer.zero_grad()
-                outputs = model(X_batch)
-                loss = criterion(outputs, y_batch)
-                loss.backward()
-                optimizer.step()
-                train_loss += loss.item()
-            except torch.AcceleratorError or RuntimeError:
-                print(outputs.min().item(), outputs.max().item())
-                print("X sample:\n", X_batch[0, 0, :])  # first example, first channel, first 10 values
-                print("Y sample:\n", y_batch[0, :])  # corresponding label
-                print()
-
-            # store results for metrics
-            preds = (torch.sigmoid(outputs) > training_threshold).float()
+            # (B, 1, W) and (B, 1)
+            X_batch = X_batch.to(device)
+            y_batch = y_batch.to(device)
+            optimizer.zero_grad()
+            logits = model(X_batch)  # shape: (B,1)
+            loss = criterion(logits, y_batch)
+            loss.backward()
+            optimizer.step()
+            train_loss += loss.item()
+            # compute probabilities for metrics only
+            probs = torch.sigmoid(logits)
+            # convert to 0/1 predictions
+            preds = (probs > training_threshold).float()
             y_true_train.extend(y_batch.cpu().numpy().flatten())
             y_pred_train.extend(preds.cpu().numpy().flatten())
 
@@ -148,17 +151,17 @@ if __name__ == "__main__":
 
     #                    D2     D3     D4     D5     D6
     datasets =          [data2, data3, data4, data5, data6]
-    window_interleave = [1,     1,     1,     3,     5]
-    widen_labels =      [5,     5,     5,     5,     5]
+    datasets =          [data6]
+    widen_labels =      [1,     1,     1,     1,     1]
+    nms_refactory =     [5,     5,     5,     5,     5]
 
     model_name = "20251121_neuron_event_det_cnn"
 
     for i, dataset in enumerate(datasets):
         print(f"Processing dataset {i+2}...")
         train_set_specific_model(dataN=dataset,
-                                 dataset_id=i+2,
+                                 dataset_id=6,
                                  model_name_conv=model_name,
-                                 window_interleave=window_interleave[i],
                                  widen_labels=widen_labels[i]
                                  )
 

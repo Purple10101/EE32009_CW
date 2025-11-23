@@ -24,15 +24,87 @@ import copy
 from src.nn.ind_mdl.noise_suppression.noise_suppression_utils import *
 
 
+def prep_set_train_val(data, labels_idx, labels_bin, window_size=128):
+    X = []
+    y = []
+    indices = []
+
+    data_len = len(data)
+
+    # The target spike position inside each window
+    z = int(window_size * 0.2)
+
+    labels_idx = np.array(labels_idx)
+
+    for index in labels_idx:
+
+        # spike windows
+        window_start = index - z
+        window_end = window_start + window_size
+
+        if 0 <= window_start and window_end <= data_len:
+            X.append(data[window_start:window_end])
+            y.append(1.0)  # spike at the correct location
+            indices.append(index)
+            #plot_sample_with_binary(data[window_start:window_end], labels_bin[window_start:window_end])
+            #print()
+
+        # no spike windows
+        while True:
+            rand_idx = np.random.randint(z, data_len - (window_size - z))
+            if labels_bin[rand_idx] == 0:
+                break
+
+        window_start = rand_idx - z
+        window_end = window_start + window_size
+
+        X.append(data[window_start:window_end])
+        y.append(0.0)
+        indices.append(index)
+        plot_widow(data[window_start:window_end])
+        print()
+
+        # spike not at z windows
+        # pick a spike close but NOT at z
+        offset_choices = np.arange(-20, 21)
+        offset_choices = offset_choices[offset_choices != 0]
+
+        misaligned_idx = index + np.random.choice(offset_choices)
+
+        if misaligned_idx >= 0 and misaligned_idx < data_len:
+
+            window_start = misaligned_idx - z
+            window_end = window_start + window_size
+
+            if 0 <= window_start and window_end <= data_len:
+                X.append(data[window_start:window_end])
+                y.append(0.0)  # spike present but NOT at z
+                indices.append(index)
+                plot_widow(data[window_start:window_end])
+                print()
+
+    X = torch.from_numpy(np.stack(X)).unsqueeze(1).float()  # (B,1,W)
+    y = torch.tensor(y).float().unsqueeze(1)  # (B,1)
+
+    return X, y, indices
+
+
 class TrainingData:
-    def __init__(self, raw_80dB_data, raw_unknown_data, idx_bin, target_id, window_interleave, widen_labels, fs=25000):
+    def __init__(self,
+                 raw_80dB_data,
+                 raw_unknown_data,
+                 idx_list,
+                 idx_bin,
+                 target_id,
+                 widen_labels,
+                 fs=25000):
 
         # hyperparameters
-        self.window_interleave = window_interleave
         self.widen_labels_val = widen_labels
 
         # index logic
         self.idx_ground_truth_bin = idx_bin
+        self.idx_groud_truth_list = idx_list
         self.expanded_idx_ground_truth_bin = self.widen_labels()
 
         # Data Processing Pipeline
@@ -47,10 +119,11 @@ class TrainingData:
 
         self.data_proc = bp_wt_degraded_80dB_resynth_data
 
-        #plot_widow(self.data_proc[10_000:])
+        plot_widow(self.data_proc)
         #plot_widow(self.data_proc[100_000:101_000])
 
-        X_tensors, y_tensors = self.prep_set_train(self.data_proc,
+        X_tensors, y_tensors, self.indices = prep_set_train_val(self.data_proc,
+                                                   self.idx_groud_truth_list,
                                                    self.expanded_idx_ground_truth_bin)
         self.dataset_t = TensorDataset(X_tensors, y_tensors)
         self.loader_t = DataLoader(self.dataset_t, batch_size=64, shuffle=True)
@@ -71,58 +144,6 @@ class TrainingData:
             expanded[start:end] = 1
         return expanded
 
-    def prep_set_train(self, data, labels, window_size=128, stride=1):
-        """
-        maybe simplify this...
-        Hard and soft snapshot?
-
-        include less nose, you have 50-50 rn
-
-        Package the series and indexes into tensors with respect to the
-        required window size and stride length.
-
-        for D5 - D6 provide way more noise only windows to drive down FPs
-        """
-        X, y = [], []
-        np_lables_no_exp = np.array(self.idx_ground_truth_bin)
-        noise_c = 0
-        num_random_positions = 1
-
-        for i in range(0, len(data) - window_size, stride):
-            # for each spike we want window_interleave windows of noise
-            center = int(window_size * 0.5)
-            window_split_idx = [center]
-            data_re_norm = data[i:i + window_size]
-            if any(np_lables_no_exp[i + int(idx)] == 1 for idx in window_split_idx):
-                # find spike index inside global labels
-                spike_global_idx = i + center
-
-                # generate 1 random spike positions inside window
-                random_positions = np.random.randint(
-                    low=int(window_size * 0.4),
-                    high=int(window_size * 0.6),
-                    size=num_random_positions
-                )
-                for pos in random_positions:
-                    new_i = spike_global_idx - pos
-                    if new_i < 0 or new_i + window_size > len(data):
-                        continue
-                    X.append(data[new_i:new_i + window_size])
-                    y.append(labels[new_i:new_i + window_size])
-                # plot_sample_with_binary(data_re_norm, labels[i:i + window_size])
-                noise_c = 0
-            elif np_lables_no_exp[i - window_size:i + window_size].mean() == 0 and noise_c < self.window_interleave:
-                X.append(data_re_norm)
-                y.append(labels[i:i + window_size])
-                # plot_sample_with_binary(data_re_norm, labels[i:i + window_size])
-                noise_c += 1
-
-        X = torch.from_numpy(np.stack(X)).unsqueeze(1).float()
-        y = torch.from_numpy(np.stack(y)).float()
-        print(X.size(), y.size())
-        return X, y
-
-
 class InferenceDataEvntDet:
     def __init__(self, raw_unknown_data, raw_80dB_data, fs=25_000):
 
@@ -137,30 +158,52 @@ class InferenceDataEvntDet:
         self.loader_i = DataLoader(self.dataset_i, batch_size=64, shuffle=False)
 
     def prep_set_inf(self, data, window_size=128, stride=1):
-        """
-        This version id for preparing the inference tensors and still must
-        side for the peak detection signal proc algo to sit inside it
 
-        We then need to maintain dimensionality to build index list at the end
-        """
         X = []
         index_map = []
-        for i in range(0, len(data) - window_size, stride):
-            data_re_norm = data[i:i + window_size]
-            X.append(data_re_norm)
-            #plot_widow(data_re_norm)
-            index_map.append(np.arange(i, i + window_size))
+
+        N = len(data)
+        z = int(window_size * 0.2)  # same as training
+
+        for i in range(0, N, stride):
+
+            # compute window boundaries so that index i is at position z
+            window_start = i - z
+            window_end = window_start + window_size
+
+            # skip edges where the window does not fit
+            if window_start < 0 or window_end > N:
+                continue
+
+            # extract the window
+            window = data[window_start:window_end]
+
+            X.append(window)
+            index_map.append(i)  # this window predicts: "Is there a spike at time i?"
+
+        # convert to tensors
         X = torch.from_numpy(np.stack(X)).unsqueeze(1).float()
-        index_map = np.stack(index_map)  # (N, window_size)
-        print(X.size())
+        index_map = np.array(index_map)
+
+        print(X.shape, index_map.shape)
         return X, index_map
 
-
 class ValidationData:
-    def __init__(self, raw_80dB_data, raw_unknown_data, idx_bin, target_id, fs=25000):
+    def __init__(self,
+                 raw_80dB_data,
+                 raw_unknown_data,
+                 idx_list,
+                 idx_bin,
+                 target_id,
+                 widen_labels,
+                 fs=25000):
+
+        # hyperparameters
+        self.widen_labels_val = widen_labels
 
         # index logic
         self.idx_ground_truth_bin = idx_bin
+        self.idx_groud_truth_list = idx_list
         self.expanded_idx_ground_truth_bin = self.widen_labels()
 
         # Data Processing Pipeline
@@ -175,13 +218,12 @@ class ValidationData:
 
         self.data_proc = bp_wt_degraded_80dB_resynth_data
 
+        plot_widow(self.data_proc)
+        # plot_widow(self.data_proc[100_000:101_000])
 
-
-        self.data_proc = zscore(bp_wt_degraded_80dB_resynth_data)
-
-        X_tensors, y_tensors, self.index_map = (
-            self.prep_set_val(self.data_proc,
-                              self.idx_ground_truth_bin))
+        X_tensors, y_tensors, self.indices = prep_set_train_val(self.data_proc,
+                                                  self.idx_groud_truth_list,
+                                                  self.expanded_idx_ground_truth_bin)
         self.dataset_v = TensorDataset(X_tensors, y_tensors)
         self.loader_v = DataLoader(self.dataset_v, batch_size=64, shuffle=False)
 
@@ -199,62 +241,42 @@ class ValidationData:
             expanded[start:end] = 1
         return expanded
 
-    def prep_set_val(self, data, labels, window_size=128, stride=1):
-        """
-        This version id for preparing the inference tensors and still must
-        side for the peak detection signal proc algo to sit inside it
-
-        We then need to maintain dimensionality to build index list at the end
-        """
-        X, y = [], []
-        index_map = []
-        for i in range(0, len(data) - window_size, stride):
-            data_re_norm = data[i:i + window_size]
-            X.append(data_re_norm)
-            y.append(labels[i:i + window_size])
-            index_map.append(np.arange(i, i + window_size))
-        X = torch.from_numpy(np.stack(X)).unsqueeze(1).float()
-        y = torch.from_numpy(np.stack(y)).float()
-        index_map = np.stack(index_map)  # (N, window_size)
-        print(X.size(), y.size())
-        return X, y, index_map
-
 
 ########################################################################################################################
 # UTILS #
 ########################################################################################################################
 
 
-def nonmax_rejection(preds, threshold, refractory=3):
-    # refactory needs a big increase for later datasets
-    preds = np.asarray(preds)
-    candidate_indices = np.where(preds > threshold)[0]
+def nms(probs, threshold, refractory=5):
+    probs = np.asarray(probs)
+    N = len(probs)
 
-    if len(candidate_indices) == 0:
-        return np.zeros_like(preds, dtype=int)
+    # start with zeros
+    spikes = np.zeros(N, dtype=int)
 
-    final_spikes = []
-    current_burst = [candidate_indices[0]]
+    # find all candidate peaks above threshold
+    candidates = np.where(probs > threshold)[0]
+    visited = np.zeros(N, dtype=bool)
 
-    # Group candidate indices into bursts based on refractory distance
-    for idx in candidate_indices[1:]:
-        if idx - current_burst[-1] <= refractory:
-            # same burst
-            current_burst.append(idx)
-        else:
-            # burst ended → save best index
-            best = current_burst[np.argmax(preds[current_burst])]
-            final_spikes.append(best)
-            current_burst = [idx]
+    for idx in candidates:
+        if visited[idx]:
+            continue
 
-    # handle last burst
-    best = current_burst[np.argmax(preds[current_burst])]
-    final_spikes.append(best)
+        # define suppression window
+        left  = max(0, idx - refractory)
+        right = min(N, idx + refractory + 1)
 
-    # produce binary output
-    labels_bin = np.zeros_like(preds, dtype=int)
-    labels_bin[final_spikes] = 1
-    return labels_bin
+        # find best peak in window
+        window = np.arange(left, right)
+        best_idx_in_window = window[np.argmax(probs[window])]
+
+        # keep ONLY this index as a spike
+        spikes[best_idx_in_window] = 1
+
+        # mark the whole window as visited so no more spikes added here
+        visited[left:right] = True
+
+    return spikes
 
 def tolerant_binary_metrics(preds_bin, idx_bin_val, tol=3):
     preds_bin = np.asarray(preds_bin, dtype=int)
