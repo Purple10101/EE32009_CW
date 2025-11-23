@@ -44,12 +44,14 @@ def export_mat(data, index_lst, cls_lst, dataset_id):
         "Index": index_lst,
         "Class": cls_lst
     }
-    savemat(f"src/nn/ind_mdl/seq/20251121_seq/outputs/vis/{dataset_id}_vis.mat", export_data)
+    savemat(f"src/nn/ind_mdl/seq/20251121_seq/outputs/vis/D{dataset_id}_vis.mat", export_data)
+    print(f"Saved file src/nn/ind_mdl/seq/20251121_seq/outputs/vis/D{dataset_id}_vis.mat")
     export_data_sub = {
         "Index": index_lst,
         "Class": cls_lst
     }
-    savemat(f"src/nn/ind_mdl/seq/20251121_seq/outputs/sub/{dataset_id}.mat", export_data_sub)
+    savemat(f"src/nn/ind_mdl/seq/20251121_seq/outputs/sub/D{dataset_id}.mat", export_data_sub)
+    print(f"Saved file src/nn/ind_mdl/seq/20251121_seq/outputs/sub/D{dataset_id}_vis.mat")
 
 
 def process_dataset(dataset,
@@ -71,7 +73,7 @@ def process_dataset(dataset,
             indexes = pickle.load(x)
         with open(f"src/nn/ind_mdl/neuron_classifcation/outputs/D{dataset_id}.pkl", "rb") as y:
             classes = pickle.load(y)
-        export_mat(dataset, indexes, classes, dataset_id)
+        export_mat(dataset['d'][0], indexes, classes, dataset_id)
 
     except FileNotFoundError:
         idx_count, vis_data_proc = event_detection_forward_pass(dataN=dataset,

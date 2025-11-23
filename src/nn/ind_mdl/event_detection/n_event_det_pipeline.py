@@ -84,15 +84,23 @@ def event_detection_forward_pass(dataN,
     final_probs /= np.maximum(counts, 1)
 
     preds = nonmax_rejection(final_probs, threshold, refractory=refractory)
-    plot_sample_with_binary(data_inf[-11000:], preds[-11000:])
-    plot_sample_with_binary(inf_set.data_proc[-11000:], preds[-11000:])
+    #plot_sample_with_binary(data_inf[-11000:], preds[-11000:])
+    #plot_sample_with_binary(inf_set.data_proc[-11000:], preds[-11000:])
 
     import pickle
     with open(f"src/nn/ind_mdl/event_detection/outputs/D{dataset_id}.pkl", "wb") as f:
         output_indexes = np.where(preds == 1)[0]
         pickle.dump(output_indexes, f)
 
+    known = known_values[dataset_id - 2]
+    inf = len(output_indexes)
+    print("-------------------")
+    print(f"Number of spikes:        {inf}")
+    print(f"Absolute max recall:     {inf / known if inf < known else 1}")
+    print(f"Absolute max precision:  {known / inf if known < inf else 1}")
     print(f"Saved src/nn/ind_mdl/event_detection/outputs/D{dataset_id}.pkl")
+    print("-------------------\n")
+
     return len([x for x in preds if x != 0]), inf_set.data_proc
 
 """
@@ -123,6 +131,7 @@ if __name__ == "__main__":
     #               D2   D3   D4   D5   D6
     thresholds =   [0.9, 0.9, 0.9, 0.9, 0.85]
     refractories = [3,   3,   3,   10,  10]
+    known_values = [3985, 3327, 3031, 2582, 3911]
 
     num_spikes = []
 

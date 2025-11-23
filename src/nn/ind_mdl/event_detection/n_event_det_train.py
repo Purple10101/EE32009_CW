@@ -71,7 +71,7 @@ def train_set_specific_model(dataN,
     criterion = nn.BCELoss()
     optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
 
-    training_threshold = 0.6
+    training_threshold = 0.7
     num_epochs = 100
 
     ####################################################################################################################
